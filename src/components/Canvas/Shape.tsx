@@ -1,10 +1,10 @@
 /**
  * Shape Component
- * Renders individual shapes with stroke position control
+ * Renders individual shapes with proper resizing and stroke positioning
  */
 
 import { useCallback, useRef, useEffect } from 'react';
-import { Group, Rect, Circle, Text, Transformer } from 'react-konva';
+import { Rect, Circle, Text, Transformer } from 'react-konva';
 import type Konva from 'konva';
 import type { Shape as ShapeType } from '../../types';
 import {
@@ -22,51 +22,81 @@ interface ShapeProps {
   isSelected: boolean;
   onSelect: () => void;
   onDragEnd: (x: number, y: number) => void;
-  onTransformEnd: (updates: { x?: number; y?: number; width?: number; height?: number; scaleX?: number; scaleY?: number }) => void;
+  onTransformEnd: (updates: { x?: number; y?: number; width?: number; height?: number; radius?: number }) => void;
   isDraggable: boolean;
 }
 
 export function Shape({ shape, isSelected, onSelect, onDragEnd, onTransformEnd, isDraggable }: ShapeProps) {
-  const groupRef = useRef<Konva.Group | null>(null);
   const shapeRef = useRef<Konva.Rect | Konva.Circle | Konva.Text | null>(null);
   const transformerRef = useRef<Konva.Transformer | null>(null);
 
-  // Attach transformer to group when selected
+  // Attach transformer to shape when selected
   useEffect(() => {
-    if (isSelected && transformerRef.current) {
-      const node = groupRef.current || shapeRef.current;
-      if (node) {
-        transformerRef.current.nodes([node]);
-        transformerRef.current.getLayer()?.batchDraw();
-      }
+    if (isSelected && transformerRef.current && shapeRef.current) {
+      transformerRef.current.nodes([shapeRef.current]);
+      transformerRef.current.getLayer()?.batchDraw();
     }
   }, [isSelected]);
 
   const handleTransformEnd = useCallback(
     (e: Konva.KonvaEventObject<Event>) => {
-      const node = e.target;
+      const node = shapeRef.current;
+      if (!node) return;
+
       const scaleX = node.scaleX();
       const scaleY = node.scaleY();
 
-      // Reset scale and apply it to width/height
+      // Reset scale
       node.scaleX(1);
       node.scaleY(1);
 
-      onTransformEnd({
-        x: node.x(),
-        y: node.y(),
-        width: Math.max(5, node.width() * scaleX),
-        height: Math.max(5, node.height() * scaleY),
-      });
+      if (shape.type === 'rectangle') {
+        const newWidth = Math.max(5, node.width() * scaleX);
+        const newHeight = Math.max(5, node.height() * scaleY);
+        
+        onTransformEnd({
+          x: node.x(),
+          y: node.y(),
+          width: newWidth,
+          height: newHeight,
+        });
+      } else if (shape.type === 'circle') {
+        const newRadius = Math.max(5, node.radius() * scaleX);
+        
+        onTransformEnd({
+          x: node.x(),
+          y: node.y(),
+          radius: newRadius,
+        });
+      } else if (shape.type === 'text') {
+        const newWidth = Math.max(5, node.width() * scaleX);
+        
+        onTransformEnd({
+          x: node.x(),
+          y: node.y(),
+          width: newWidth,
+        });
+      }
     },
-    [onTransformEnd]
+    [shape.type, onTransformEnd]
   );
 
   const handleDragEnd = useCallback(
     (e: Konva.KonvaEventObject<DragEvent>) => {
       const node = e.target;
-      const x = node.x();
-      const y = node.y();
+      let x = node.x();
+      let y = node.y();
+
+      // Adjust for stroke positioning offsets
+      if (shape.type === 'rectangle' && shape.strokePosition === 'outside') {
+        const offset = shape.strokeWidth / 2;
+        x += offset;
+        y += offset;
+      } else if (shape.type === 'rectangle' && shape.strokePosition === 'inside') {
+        const offset = shape.strokeWidth / 2;
+        x -= offset;
+        y -= offset;
+      }
 
       // Constrain position to canvas boundaries
       let constrainedX = x;
@@ -83,16 +113,16 @@ export function Shape({ shape, isSelected, onSelect, onDragEnd, onTransformEnd, 
         constrainedX = constrained.x;
         constrainedY = constrained.y;
       } else if (shape.type === 'circle') {
-        // For circles, constrain based on radius
-        constrainedX = Math.max(shape.radius, Math.min(CANVAS_WIDTH - shape.radius, x));
-        constrainedY = Math.max(shape.radius, Math.min(CANVAS_HEIGHT - shape.radius, y));
+        const effectiveRadius = shape.strokePosition === 'outside' 
+          ? shape.radius + shape.strokeWidth / 2
+          : shape.radius;
+        constrainedX = Math.max(effectiveRadius, Math.min(CANVAS_WIDTH - effectiveRadius, x));
+        constrainedY = Math.max(effectiveRadius, Math.min(CANVAS_HEIGHT - effectiveRadius, y));
       } else {
-        // For text, just ensure it stays within bounds
         constrainedX = Math.max(0, Math.min(CANVAS_WIDTH - 100, x));
         constrainedY = Math.max(0, Math.min(CANVAS_HEIGHT - 50, y));
       }
 
-      node.position({ x: constrainedX, y: constrainedY });
       onDragEnd(constrainedX, constrainedY);
     },
     [shape, onDragEnd]
@@ -101,10 +131,9 @@ export function Shape({ shape, isSelected, onSelect, onDragEnd, onTransformEnd, 
   const isLocked = shape.isLocked && shape.lockedBy !== null;
   const canDrag = isDraggable && !isLocked;
 
-  // Determine stroke color based on state
+  // Determine stroke color and width
   const getStrokeColor = () => {
     if (isLocked) return LOCKED_STROKE;
-    // Always show stroke for shapes with stroke property
     if (shape.type === 'rectangle' || shape.type === 'circle') {
       return shape.stroke === 'transparent' ? undefined : shape.stroke;
     }
@@ -113,7 +142,6 @@ export function Shape({ shape, isSelected, onSelect, onDragEnd, onTransformEnd, 
 
   const getStrokeWidth = () => {
     if (isLocked) return LOCKED_STROKE_WIDTH;
-    // Show actual stroke width for shapes with stroke property
     if (shape.type === 'rectangle' || shape.type === 'circle') {
       return shape.strokeWidth;
     }
@@ -121,52 +149,45 @@ export function Shape({ shape, isSelected, onSelect, onDragEnd, onTransformEnd, 
   };
 
   if (shape.type === 'rectangle') {
-    // Calculate adjusted dimensions and position based on stroke position
-    let offsetX = 0;
-    let offsetY = 0;
-    let adjustedWidth = shape.width;
-    let adjustedHeight = shape.height;
+    // Calculate position and size adjustments for stroke positioning
+    let x = shape.x;
+    let y = shape.y;
+    let width = shape.width;
+    let height = shape.height;
     const strokeWidth = getStrokeWidth();
     
     if (shape.strokePosition === 'inside') {
-      // For inside stroke, shrink the shape so the outer boundary stays the same
-      offsetX = strokeWidth / 2;
-      offsetY = strokeWidth / 2;
-      adjustedWidth = Math.max(1, shape.width - strokeWidth);
-      adjustedHeight = Math.max(1, shape.height - strokeWidth);
+      // Offset inward and reduce size
+      x += strokeWidth / 2;
+      y += strokeWidth / 2;
+      width = Math.max(1, shape.width - strokeWidth);
+      height = Math.max(1, shape.height - strokeWidth);
     } else if (shape.strokePosition === 'outside') {
-      // For outside stroke, expand the shape so the inner boundary stays the same
-      offsetX = -strokeWidth / 2;
-      offsetY = -strokeWidth / 2;
-      adjustedWidth = shape.width + strokeWidth;
-      adjustedHeight = shape.height + strokeWidth;
+      // Offset outward and increase size
+      x -= strokeWidth / 2;
+      y -= strokeWidth / 2;
+      width = shape.width + strokeWidth;
+      height = shape.height + strokeWidth;
     }
-    // For 'center', no adjustments needed (default Konva behavior)
     
     return (
       <>
-        <Group
-          ref={groupRef}
-          x={shape.x}
-          y={shape.y}
+        <Rect
+          ref={shapeRef as React.Ref<Konva.Rect>}
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          fill={shape.fill}
+          stroke={getStrokeColor()}
+          strokeWidth={strokeWidth}
+          cornerRadius={shape.cornerRadius}
           draggable={canDrag}
           onClick={onSelect}
           onTap={onSelect}
           onDragEnd={handleDragEnd}
-        >
-          <Rect
-            ref={shapeRef as React.Ref<Konva.Rect>}
-            x={offsetX}
-            y={offsetY}
-            width={adjustedWidth}
-            height={adjustedHeight}
-            fill={shape.fill}
-            stroke={getStrokeColor()}
-            strokeWidth={strokeWidth}
-            cornerRadius={shape.cornerRadius}
-            opacity={isLocked ? 0.7 : 1}
-          />
-        </Group>
+          opacity={isLocked ? 0.7 : 1}
+        />
         {isSelected && (
           <Transformer
             ref={transformerRef as React.Ref<Konva.Transformer>}
@@ -187,41 +208,32 @@ export function Shape({ shape, isSelected, onSelect, onDragEnd, onTransformEnd, 
   }
 
   if (shape.type === 'circle') {
-    // Calculate adjusted radius based on stroke position
-    let adjustedRadius = shape.radius;
+    // Calculate radius adjustment for stroke positioning
+    let radius = shape.radius;
     const strokeWidth = getStrokeWidth();
     
     if (shape.strokePosition === 'inside') {
-      // For inside stroke, shrink radius to keep outer bounds the same
-      adjustedRadius = Math.max(1, shape.radius - strokeWidth / 2);
+      radius = Math.max(1, shape.radius - strokeWidth / 2);
     } else if (shape.strokePosition === 'outside') {
-      // For outside stroke, expand radius to keep inner bounds the same
-      adjustedRadius = shape.radius + strokeWidth / 2;
+      radius = shape.radius + strokeWidth / 2;
     }
-    // For 'center', no adjustments needed
     
     return (
       <>
-        <Group
-          ref={groupRef}
+        <Circle
+          ref={shapeRef as React.Ref<Konva.Circle>}
           x={shape.x}
           y={shape.y}
+          radius={radius}
+          fill={shape.fill}
+          stroke={getStrokeColor()}
+          strokeWidth={strokeWidth}
           draggable={canDrag}
           onClick={onSelect}
           onTap={onSelect}
           onDragEnd={handleDragEnd}
-        >
-          <Circle
-            ref={shapeRef as React.Ref<Konva.Circle>}
-            x={0}
-            y={0}
-            radius={adjustedRadius}
-            fill={shape.fill}
-            stroke={getStrokeColor()}
-            strokeWidth={strokeWidth}
-            opacity={isLocked ? 0.7 : 1}
-          />
-        </Group>
+          opacity={isLocked ? 0.7 : 1}
+        />
         {isSelected && (
           <Transformer
             ref={transformerRef as React.Ref<Konva.Transformer>}
@@ -257,16 +269,12 @@ export function Shape({ shape, isSelected, onSelect, onDragEnd, onTransformEnd, 
           onClick={onSelect}
           onTap={onSelect}
           onDragEnd={handleDragEnd}
-          stroke={isSelected ? SELECTION_STROKE : undefined}
-          strokeWidth={isSelected ? 1 : 0}
-          shadowColor={isSelected ? 'rgba(0, 102, 255, 0.3)' : undefined}
-          shadowBlur={isSelected ? 10 : 0}
           opacity={isLocked ? 0.7 : 1}
         />
         {isSelected && (
           <Transformer
             ref={transformerRef as React.Ref<Konva.Transformer>}
-            enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']}
+            enabledAnchors={['middle-left', 'middle-right']}
             rotateEnabled={false}
             borderStroke={SELECTION_STROKE}
             borderStrokeWidth={SELECTION_STROKE_WIDTH}

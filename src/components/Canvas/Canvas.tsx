@@ -49,6 +49,8 @@ export function Canvas() {
   const [stageScale, setStageScale] = useState(DEFAULT_ZOOM);
   const [stagePosition, setStagePosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [selectedTool, setSelectedTool] = useState<Tool>('select');
   
@@ -163,56 +165,71 @@ export function Canvas() {
   );
 
   /**
-   * Handle stage drag start
+   * Handle panning with Ctrl+drag
    */
-  const handleDragStart = useCallback((e: Konva.KonvaEventObject<DragEvent>) => {
+  const handleStageMouseDown = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
     const isCtrlPressed = e.evt.ctrlKey || e.evt.metaKey;
     
-    if (!isCtrlPressed) {
-      const stage = e.target as Konva.Stage;
-      stage.stopDrag();
-      return;
+    // Start panning if Ctrl is pressed (allow panning from anywhere)
+    if (isCtrlPressed) {
+      setIsPanning(true);
+      const stage = stageRef.current;
+      if (stage) {
+        const pointer = stage.getPointerPosition();
+        if (pointer) {
+          setPanStart({
+            x: pointer.x - stagePosition.x,
+            y: pointer.y - stagePosition.y
+          });
+        }
+      }
+      // Prevent default behavior when Ctrl is pressed
+      e.evt.preventDefault();
     }
+  }, [stagePosition]);
+
+  const handleStageMouseMove = useCallback(() => {
+    if (!isPanning || !panStart) return;
     
-    setIsDragging(true);
+    const stage = stageRef.current;
+    if (!stage) return;
+    
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+    
+    const newPos = {
+      x: pointer.x - panStart.x,
+      y: pointer.y - panStart.y
+    };
+    
+    const constrainedPos = constrainPosition(
+      newPos,
+      stageScale,
+      stageSize.width,
+      stageSize.height
+    );
+    
+    setStagePosition(constrainedPos);
+  }, [isPanning, panStart, stageScale, stageSize, constrainPosition]);
+
+  const handleStageMouseUp = useCallback(() => {
+    setIsPanning(false);
+    setPanStart(null);
   }, []);
 
   /**
-   * Handle stage drag end
-   */
-  const handleDragEnd = useCallback(
-    (e: Konva.KonvaEventObject<DragEvent>) => {
-      setIsDragging(false);
-      
-      const stage = e.target as Konva.Stage;
-      const newPos = stage.position();
-
-      const constrainedPos = constrainPosition(
-        newPos,
-        stageScale,
-        stageSize.width,
-        stageSize.height
-      );
-
-      setStagePosition(constrainedPos);
-    },
-    [stageScale, stageSize, constrainPosition]
-  );
-
-  /**
-   * Handle mouse down - start shape creation or panning
+   * Handle mouse down - start shape creation
    */
   const handleMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       const isCtrlPressed = e.evt.ctrlKey || e.evt.metaKey;
       
-      // If Ctrl is pressed, let stage dragging handle it
+      // If Ctrl is pressed, panning is handled by handleStageMouseDown
       if (isCtrlPressed) {
         return;
       }
 
       // Only start drawing if a shape or text tool is selected
-      // Allow drawing anywhere, not just on empty stage
       if (selectedTool === 'rectangle' || selectedTool === 'circle' || selectedTool === 'text') {
         const stage = stageRef.current;
         if (!stage) return;
@@ -549,11 +566,40 @@ export function Canvas() {
   }, [selectedId, deleteShape, selectShape]);
 
   const getCursorStyle = useCallback(() => {
-    if (isDragging) return 'grabbing';
+    if (isPanning) return 'grabbing';
     if (isDrawing) return 'crosshair';
     if (selectedTool === 'rectangle' || selectedTool === 'circle' || selectedTool === 'text') return 'crosshair';
     return 'default';
-  }, [isDragging, isDrawing, selectedTool]);
+  }, [isPanning, isDrawing, selectedTool]);
+
+  // Track Ctrl key state for cursor feedback
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.key === 'Control' || e.key === 'Meta') && !isPanning) {
+        const stage = stageRef.current;
+        if (stage) {
+          stage.container().style.cursor = 'grab';
+        }
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if ((e.key === 'Control' || e.key === 'Meta') && !isPanning) {
+        const stage = stageRef.current;
+        if (stage) {
+          stage.container().style.cursor = getCursorStyle();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [isPanning, getCursorStyle]);
 
   return (
     <div className="flex h-full">
@@ -589,13 +635,20 @@ export function Canvas() {
           ref={stageRef}
           width={stageSize.width}
           height={stageSize.height}
-          draggable={true}
+          draggable={false}
           onWheel={handleWheel}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
+          onMouseDown={(e) => {
+            handleStageMouseDown(e);
+            handleMouseDown(e);
+          }}
+          onMouseMove={(e) => {
+            handleStageMouseMove();
+            handleMouseMove();
+          }}
+          onMouseUp={(e) => {
+            handleStageMouseUp();
+            handleMouseUp();
+          }}
           onClick={handleStageClick}
           onTap={handleStageClick}
           scaleX={stageScale}
