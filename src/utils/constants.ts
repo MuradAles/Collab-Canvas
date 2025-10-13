@@ -7,7 +7,7 @@
 // Canvas Dimensions
 // ============================================================================
 
-export const CANVAS_WIDTH = 5000;
+export const CANVAS_WIDTH = 10000;
 export const CANVAS_HEIGHT = 5000;
 
 // Default viewport dimensions (will be dynamic based on window size)
@@ -27,13 +27,24 @@ export const DEFAULT_ZOOM = 1;
 // Shape Defaults
 // ============================================================================
 
-export const DEFAULT_SHAPE_FILL = '#cccccc';
+export const DEFAULT_SHAPE_FILL = '#e0e0e0';
+export const DEFAULT_SHAPE_STROKE = '#000000';
+export const DEFAULT_SHAPE_STROKE_WIDTH = 2;
+export const DEFAULT_STROKE_POSITION: 'inside' | 'center' | 'outside' = 'center';
 export const DEFAULT_SHAPE_WIDTH = 100;
 export const DEFAULT_SHAPE_HEIGHT = 100;
+export const DEFAULT_SHAPE_RADIUS = 50;
+export const DEFAULT_CORNER_RADIUS = 0;
 export const MIN_SHAPE_SIZE = 10;
 
+// Text defaults
+export const DEFAULT_TEXT_CONTENT = 'Text';
+export const DEFAULT_TEXT_SIZE = 16;
+export const DEFAULT_TEXT_FONT = 'Arial';
+export const DEFAULT_TEXT_FILL = '#000000';
+
 // Selection styling
-export const SELECTION_STROKE = '#1976d2';
+export const SELECTION_STROKE = '#0066ff';
 export const SELECTION_STROKE_WIDTH = 2;
 
 // Lock styling

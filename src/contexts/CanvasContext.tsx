@@ -15,7 +15,6 @@ import {
 import type Konva from 'konva';
 import type { Shape, ShapeUpdate, CanvasContextType } from '../types';
 import { generateId } from '../utils/helpers';
-import { DEFAULT_SHAPE_FILL } from '../utils/constants';
 
 const CanvasContext = createContext<CanvasContextType | null>(null);
 
@@ -28,22 +27,46 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading] = useState(false); // Will be used in PR #5 for Firestore loading
   const stageRef = useRef<Konva.Stage | null>(null);
+  
+  // Counter for shape names (increments and never resets)
+  const shapeCounterRef = useRef<{ [key: string]: number }>({
+    rectangle: 0,
+    circle: 0,
+    text: 0,
+  });
 
   /**
    * Adds a new shape to the canvas
-   * For MVP: Only supports rectangles with local state
+   * For MVP: Supports rectangles and text with local state
    */
   const addShape = useCallback(
-    async (shapeData: Omit<Shape, 'id' | 'isLocked' | 'lockedBy' | 'lockedByName'>) => {
+    async (shapeData: Omit<Shape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>) => {
+      // Increment counter and generate name
+      shapeCounterRef.current[shapeData.type] += 1;
+      const shapeNumber = shapeCounterRef.current[shapeData.type];
+      
+      let name: string;
+      if (shapeData.type === 'rectangle') {
+        name = `Rectangle ${shapeNumber}`;
+      } else if (shapeData.type === 'circle') {
+        name = `Circle ${shapeNumber}`;
+      } else {
+        name = `Text ${shapeNumber}`;
+      }
+
       const newShape: Shape = {
         ...shapeData,
         id: generateId(),
+        name,
         isLocked: false,
         lockedBy: null,
         lockedByName: null,
-      };
+      } as Shape;
 
       setShapes((prev) => [...prev, newShape]);
+      
+      // Auto-select the newly created shape
+      setSelectedId(newShape.id);
     },
     []
   );
@@ -81,6 +104,13 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
    */
   const selectShape = useCallback((id: string | null) => {
     setSelectedId(id);
+  }, []);
+
+  /**
+   * Reorders shapes (for z-index management)
+   */
+  const reorderShapes = useCallback((newOrder: Shape[]) => {
+    setShapes(newOrder);
   }, []);
 
   /**
@@ -132,6 +162,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
     selectShape,
     lockShape,
     unlockShape,
+    reorderShapes,
   };
 
   return (

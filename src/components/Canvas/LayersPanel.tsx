@@ -1,0 +1,245 @@
+/**
+ * Layers Panel Component
+ * Figma-style left panel showing all shapes with drag-to-reorder and arrow controls
+ */
+
+import { useState, useCallback } from 'react';
+import type { Shape } from '../../types';
+
+interface LayersPanelProps {
+  shapes: Shape[];
+  selectedId: string | null;
+  onSelectShape: (id: string) => void;
+  onReorderShapes: (newOrder: Shape[]) => void;
+}
+
+export function LayersPanel({ shapes, selectedId, onSelectShape, onReorderShapes }: LayersPanelProps) {
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', index.toString());
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    
+    if (draggedIndex !== null && draggedIndex !== index) {
+      setDragOverIndex(index);
+    }
+  }, [draggedIndex]);
+
+  const handleDragLeave = useCallback(() => {
+    setDragOverIndex(null);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    
+    if (draggedIndex === null) {
+      setDraggedIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+
+    // Don't do anything if dropping at the same position
+    if (draggedIndex === dropIndex) {
+      setDraggedIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+
+    // Work with reversed array since that's what we're displaying
+    const reversedShapesCopy = [...shapes].reverse();
+    const draggedShape = reversedShapesCopy[draggedIndex];
+    
+    // Remove from old position
+    reversedShapesCopy.splice(draggedIndex, 1);
+    
+    // Insert at new position
+    reversedShapesCopy.splice(dropIndex, 0, draggedShape);
+    
+    // Reverse back to get the correct order for the shapes array
+    const newShapes = reversedShapesCopy.reverse();
+
+    onReorderShapes(newShapes);
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  }, [draggedIndex, shapes, onReorderShapes]);
+
+  const handleDragEnd = useCallback(() => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  }, []);
+
+
+  const getShapeIcon = (shape: Shape) => {
+    if (shape.type === 'rectangle') {
+      return (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <rect x="3" y="3" width="18" height="18" strokeWidth={2} rx="2" />
+        </svg>
+      );
+    }
+    if (shape.type === 'circle') {
+      return (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9" strokeWidth={2} />
+        </svg>
+      );
+    }
+    if (shape.type === 'text') {
+      return (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M7 8h10M7 12h10m-6 8h2M9 4h6v16H9z"
+          />
+        </svg>
+      );
+    }
+    return null;
+  };
+
+  const getShapeName = (shape: Shape) => {
+    // Use the name field directly
+    return shape.name;
+  };
+
+  // Render shapes in reverse order (top of list = top of canvas)
+  const reversedShapes = [...shapes].reverse();
+
+  return (
+    <div className="w-60 bg-white border-r border-gray-200 flex flex-col">
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-gray-200">
+        <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
+          Layers
+        </h3>
+        <p className="text-xs text-gray-500 mt-1">
+          {shapes.length} {shapes.length === 1 ? 'shape' : 'shapes'}
+        </p>
+      </div>
+
+      {/* Layers List */}
+      <div className="flex-1 overflow-y-auto p-2">
+        {reversedShapes.length === 0 ? (
+          <div className="text-center text-gray-400 text-sm mt-8 px-4">
+            <svg
+              className="w-12 h-12 mx-auto mb-2 text-gray-300"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+              />
+            </svg>
+            <p>No shapes yet</p>
+            <p className="text-xs mt-1">Create shapes to see them here</p>
+          </div>
+        ) : (
+          reversedShapes.map((shape, index) => {
+            const isSelected = shape.id === selectedId;
+            const isDragging = draggedIndex === index;
+            const isDragOver = dragOverIndex === index;
+
+            return (
+              <div
+                key={shape.id}
+                className="relative mb-1"
+              >
+                {/* Drop indicator line */}
+                {isDragOver && draggedIndex !== null && draggedIndex > index && (
+                  <div className="absolute -top-1 left-0 right-0 h-0.5 bg-blue-500 rounded-full z-10" />
+                )}
+                
+                <div
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, index)}
+                  onDragOver={(e) => handleDragOver(e, index)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, index)}
+                  onDragEnd={handleDragEnd}
+                  onClick={() => onSelectShape(shape.id)}
+                  className={`
+                    group flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer
+                    transition-all duration-150
+                    ${isSelected 
+                      ? 'bg-blue-50 border-2 border-blue-500 shadow-sm' 
+                      : 'bg-gray-50 border-2 border-transparent hover:bg-gray-100 hover:border-gray-200'
+                    }
+                    ${isDragging ? 'opacity-40 scale-95' : ''}
+                  `}
+                >
+                  {/* Drag Handle */}
+                  <div className="text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing">
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                      <circle cx="9" cy="5" r="1.5" />
+                      <circle cx="9" cy="12" r="1.5" />
+                      <circle cx="9" cy="19" r="1.5" />
+                      <circle cx="15" cy="5" r="1.5" />
+                      <circle cx="15" cy="12" r="1.5" />
+                      <circle cx="15" cy="19" r="1.5" />
+                    </svg>
+                  </div>
+
+                  {/* Shape Icon */}
+                  <div className={isSelected ? 'text-blue-600' : 'text-gray-600'}>
+                    {getShapeIcon(shape)}
+                  </div>
+
+                  {/* Shape Name */}
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-sm truncate ${isSelected ? 'font-medium text-blue-900' : 'text-gray-700'}`}>
+                      {getShapeName(shape)}
+                    </div>
+                    {shape.type === 'rectangle' && (
+                      <div className="text-xs text-gray-500">
+                        {Math.round(shape.width)} × {Math.round(shape.height)}
+                      </div>
+                    )}
+                    {shape.type === 'circle' && (
+                      <div className="text-xs text-gray-500">
+                        r = {Math.round(shape.radius)}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Lock Indicator */}
+                  {shape.isLocked && (
+                    <div className="text-red-500" title={`Locked by ${shape.lockedByName}`}>
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2C9.243 2 7 4.243 7 7v3H6c-1.103 0-2 .897-2 2v8c0 1.103.897 2 2 2h12c1.103 0 2-.897 2-2v-8c0-1.103-.897-2-2-2h-1V7c0-2.757-2.243-5-5-5zM9 7c0-1.654 1.346-3 3-3s3 1.346 3 3v3H9V7zm4 10.723V20h-2v-2.277c-.595-.347-1-.984-1-1.723 0-1.103.897-2 2-2s2 .897 2 2c0 .738-.404 1.376-1 1.723z" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+
+                {/* Drop indicator line */}
+                {isDragOver && draggedIndex !== null && draggedIndex < index && (
+                  <div className="absolute -bottom-1 left-0 right-0 h-0.5 bg-blue-500 rounded-full z-10" />
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Info Footer */}
+      <div className="px-4 py-2 border-t border-gray-200 bg-gray-50">
+        <p className="text-xs text-gray-500">
+          Drag to reorder • Top = front
+        </p>
+      </div>
+    </div>
+  );
+}

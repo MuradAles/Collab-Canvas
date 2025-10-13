@@ -1,11 +1,11 @@
 /**
  * Canvas Component
- * Main canvas with pan, zoom, and shape rendering
+ * Main canvas with pan, zoom, shape creation, and manipulation
  * Uses Konva for high-performance 2D rendering
  */
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { Stage, Layer, Line, Rect } from 'react-konva';
+import { Stage, Layer, Line, Rect, Circle } from 'react-konva';
 import type Konva from 'konva';
 import { useCanvasContext } from '../../contexts/CanvasContext';
 import {
@@ -14,9 +14,32 @@ import {
   MIN_ZOOM,
   MAX_ZOOM,
   DEFAULT_ZOOM,
+  DEFAULT_SHAPE_FILL,
+  DEFAULT_SHAPE_STROKE,
+  DEFAULT_SHAPE_STROKE_WIDTH,
+  DEFAULT_STROKE_POSITION,
+  DEFAULT_CORNER_RADIUS,
+  MIN_SHAPE_SIZE,
+  DEFAULT_TEXT_CONTENT,
+  DEFAULT_TEXT_SIZE,
+  DEFAULT_TEXT_FONT,
+  DEFAULT_TEXT_FILL,
 } from '../../utils/constants';
+import { screenToCanvas, normalizeRectangle } from '../../utils/helpers';
 import { CanvasControls } from './CanvasControls';
 import { GridToggle } from './GridToggle';
+import { ToolSelector, type Tool } from './ToolSelector';
+import { Shape } from './Shape';
+import { PropertiesPanel } from './PropertiesPanel';
+import { LayersPanel } from './LayersPanel';
+import type { RectangleShape, CircleShape, TextShape, ShapeUpdate } from '../../types';
+
+interface NewShapePreview {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 export function Canvas() {
   const stageRef = useRef<Konva.Stage | null>(null);
@@ -27,8 +50,16 @@ export function Canvas() {
   const [stagePosition, setStagePosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
+  const [selectedTool, setSelectedTool] = useState<Tool>('select');
+  
+  // Shape creation state
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
+  const [newShapePreview, setNewShapePreview] = useState<NewShapePreview | null>(null);
 
-  const { shapes, selectShape } = useCanvasContext();
+  const { shapes, selectedId, selectShape, addShape, updateShape, deleteShape, reorderShapes } = useCanvasContext();
+
+  const selectedShape = shapes.find(s => s.id === selectedId) || null;
 
   /**
    * Constrain stage position to canvas boundaries
@@ -40,8 +71,6 @@ export function Canvas() {
       viewportWidth: number,
       viewportHeight: number
     ) => {
-      // When zoomed out (scale < 1), allow more panning
-      // When zoomed in (scale > 1), restrict panning
       const canvasScaledWidth = CANVAS_WIDTH * scale;
       const canvasScaledHeight = CANVAS_HEIGHT * scale;
 
@@ -50,23 +79,19 @@ export function Canvas() {
 
       // Constrain X
       if (canvasScaledWidth > viewportWidth) {
-        // Canvas is larger than viewport - restrict panning
         const minX = viewportWidth - canvasScaledWidth;
         const maxX = 0;
         newX = Math.max(minX, Math.min(maxX, pos.x));
       } else {
-        // Canvas is smaller than viewport - center it
         newX = (viewportWidth - canvasScaledWidth) / 2;
       }
 
       // Constrain Y
       if (canvasScaledHeight > viewportHeight) {
-        // Canvas is larger than viewport - restrict panning
         const minY = viewportHeight - canvasScaledHeight;
         const maxY = 0;
         newY = Math.max(minY, Math.min(maxY, pos.y));
       } else {
-        // Canvas is smaller than viewport - center it
         newY = (viewportHeight - canvasScaledHeight) / 2;
       }
 
@@ -76,7 +101,7 @@ export function Canvas() {
   );
 
   /**
-   * Handle window resize to update stage size
+   * Handle window resize
    */
   useEffect(() => {
     const updateSize = () => {
@@ -94,7 +119,6 @@ export function Canvas() {
 
   /**
    * Handle zoom with mousewheel
-   * Zooms to cursor position with smooth scaling
    */
   const handleWheel = useCallback(
     (e: Konva.KonvaEventObject<WheelEvent>) => {
@@ -107,20 +131,14 @@ export function Canvas() {
       const pointer = stage.getPointerPosition();
       if (!pointer) return;
 
-      // Smooth zoom using multiplicative scaling
-      const scaleBy = 1.1; // 2% change per scroll tick - very smooth
+      const scaleBy = 1.1;
       const direction = e.evt.deltaY > 0 ? -1 : 1;
       
-      // Calculate new scale
       let newScale = direction > 0 ? oldScale * scaleBy : oldScale / scaleBy;
-      
-      // Clamp to min/max zoom
       newScale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newScale));
       
-      // If already at limit, don't process
       if (newScale === oldScale) return;
 
-      // Calculate new position to zoom to cursor
       const mousePointTo = {
         x: (pointer.x - stage.x()) / oldScale,
         y: (pointer.y - stage.y()) / oldScale,
@@ -131,7 +149,6 @@ export function Canvas() {
         y: pointer.y - mousePointTo.y * newScale,
       };
 
-      // Constrain the new position
       const constrainedPos = constrainPosition(
         newPos,
         newScale,
@@ -147,13 +164,11 @@ export function Canvas() {
 
   /**
    * Handle stage drag start
-   * Only allow drag if Ctrl/Cmd is pressed
    */
   const handleDragStart = useCallback((e: Konva.KonvaEventObject<DragEvent>) => {
     const isCtrlPressed = e.evt.ctrlKey || e.evt.metaKey;
     
     if (!isCtrlPressed) {
-      // Cancel the drag if Ctrl is not pressed
       const stage = e.target as Konva.Stage;
       stage.stopDrag();
       return;
@@ -163,7 +178,7 @@ export function Canvas() {
   }, []);
 
   /**
-   * Handle stage drag end with boundary constraints
+   * Handle stage drag end
    */
   const handleDragEnd = useCallback(
     (e: Konva.KonvaEventObject<DragEvent>) => {
@@ -172,7 +187,6 @@ export function Canvas() {
       const stage = e.target as Konva.Stage;
       const newPos = stage.position();
 
-      // Constrain position based on current scale
       const constrainedPos = constrainPosition(
         newPos,
         stageScale,
@@ -186,11 +200,154 @@ export function Canvas() {
   );
 
   /**
+   * Handle mouse down - start shape creation or panning
+   */
+  const handleMouseDown = useCallback(
+    (e: Konva.KonvaEventObject<MouseEvent>) => {
+      const isCtrlPressed = e.evt.ctrlKey || e.evt.metaKey;
+      
+      // If Ctrl is pressed, let stage dragging handle it
+      if (isCtrlPressed) {
+        return;
+      }
+
+      // Only start drawing if a shape or text tool is selected
+      // Allow drawing anywhere, not just on empty stage
+      if (selectedTool === 'rectangle' || selectedTool === 'circle' || selectedTool === 'text') {
+        const stage = stageRef.current;
+        if (!stage) return;
+
+        const pointer = stage.getPointerPosition();
+        if (!pointer) return;
+
+        // Convert screen coordinates to canvas coordinates
+        const canvasPos = screenToCanvas(
+          pointer.x,
+          pointer.y,
+          stagePosition.x,
+          stagePosition.y,
+          stageScale
+        );
+
+        if (selectedTool === 'rectangle' || selectedTool === 'circle') {
+          setIsDrawing(true);
+          setDrawStart(canvasPos);
+          setNewShapePreview({
+            x: canvasPos.x,
+            y: canvasPos.y,
+            width: 0,
+            height: 0,
+          });
+        } else if (selectedTool === 'text') {
+          // Create text immediately at click position
+          const textShape: Omit<TextShape, 'id' | 'isLocked' | 'lockedBy' | 'lockedByName'> = {
+            type: 'text',
+            x: canvasPos.x,
+            y: canvasPos.y,
+            text: DEFAULT_TEXT_CONTENT,
+            fontSize: DEFAULT_TEXT_SIZE,
+            fontFamily: DEFAULT_TEXT_FONT,
+            fill: DEFAULT_TEXT_FILL,
+          };
+          addShape(textShape);
+          setSelectedTool('select'); // Switch back to select tool
+        }
+      }
+    },
+    [stagePosition, stageScale, selectedTool, addShape]
+  );
+
+  /**
+   * Handle mouse move - update shape preview while drawing
+   */
+  const handleMouseMove = useCallback(
+    () => {
+      if (!isDrawing || !drawStart || (selectedTool !== 'rectangle' && selectedTool !== 'circle')) return;
+
+      const stage = stageRef.current;
+      if (!stage) return;
+
+      const pointer = stage.getPointerPosition();
+      if (!pointer) return;
+
+      const canvasPos = screenToCanvas(
+        pointer.x,
+        pointer.y,
+        stagePosition.x,
+        stagePosition.y,
+        stageScale
+      );
+
+      const normalized = normalizeRectangle(
+        drawStart.x,
+        drawStart.y,
+        canvasPos.x,
+        canvasPos.y
+      );
+
+      setNewShapePreview(normalized);
+    },
+    [isDrawing, drawStart, stagePosition, stageScale, selectedTool]
+  );
+
+  /**
+   * Handle mouse up - finish drawing a shape
+   */
+  const handleMouseUp = useCallback(async () => {
+    if (!isDrawing || !newShapePreview || (selectedTool !== 'rectangle' && selectedTool !== 'circle')) {
+      setIsDrawing(false);
+      setDrawStart(null);
+      setNewShapePreview(null);
+      return;
+    }
+
+    // Only create shape if it's large enough
+    if (
+      newShapePreview.width >= MIN_SHAPE_SIZE &&
+      newShapePreview.height >= MIN_SHAPE_SIZE
+    ) {
+      if (selectedTool === 'rectangle') {
+        const rectShape: Omit<RectangleShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'> = {
+          type: 'rectangle',
+          x: newShapePreview.x,
+          y: newShapePreview.y,
+          width: newShapePreview.width,
+          height: newShapePreview.height,
+          fill: DEFAULT_SHAPE_FILL,
+          stroke: DEFAULT_SHAPE_STROKE,
+          strokeWidth: DEFAULT_SHAPE_STROKE_WIDTH,
+          strokePosition: DEFAULT_STROKE_POSITION,
+          cornerRadius: DEFAULT_CORNER_RADIUS,
+        };
+        await addShape(rectShape);
+      } else if (selectedTool === 'circle') {
+        // Create circle based on drag size
+        const radius = Math.max(newShapePreview.width, newShapePreview.height) / 2;
+        const circleShape: Omit<CircleShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'> = {
+          type: 'circle',
+          x: newShapePreview.x + newShapePreview.width / 2,
+          y: newShapePreview.y + newShapePreview.height / 2,
+          radius: radius,
+          fill: DEFAULT_SHAPE_FILL,
+          stroke: DEFAULT_SHAPE_STROKE,
+          strokeWidth: DEFAULT_SHAPE_STROKE_WIDTH,
+          strokePosition: DEFAULT_STROKE_POSITION,
+        };
+        await addShape(circleShape);
+      }
+    }
+
+    // Reset drawing state
+    setIsDrawing(false);
+    setDrawStart(null);
+    setNewShapePreview(null);
+  }, [isDrawing, newShapePreview, addShape, selectedTool]);
+
+  /**
    * Handle clicks on stage background to deselect
    */
   const handleStageClick = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
-      // Only deselect if clicking on stage (not on a shape)
       if (e.target === e.target.getStage()) {
         selectShape(null);
       }
@@ -199,18 +356,48 @@ export function Canvas() {
   );
 
   /**
-   * Zoom in programmatically
+   * Handle shape drag end
+   */
+  const handleShapeDragEnd = useCallback(
+    (shapeId: string, x: number, y: number) => {
+      updateShape(shapeId, { x, y });
+    },
+    [updateShape]
+  );
+
+  /**
+   * Handle shape transform end (resize)
+   */
+  const handleShapeTransformEnd = useCallback(
+    (shapeId: string, updates: { x?: number; y?: number; width?: number; height?: number }) => {
+      updateShape(shapeId, updates);
+    },
+    [updateShape]
+  );
+
+  /**
+   * Handle property updates from panel
+   */
+  const handlePropertyUpdate = useCallback(
+    (updates: ShapeUpdate) => {
+      if (selectedId) {
+        updateShape(selectedId, updates);
+      }
+    },
+    [selectedId, updateShape]
+  );
+
+  /**
+   * Zoom controls
    */
   const handleZoomIn = useCallback(() => {
     const stage = stageRef.current;
     if (!stage) return;
 
     const oldScale = stage.scaleX();
-    // Use 15% increment for button clicks (faster than scroll but still smooth)
     const scaleBy = 1.15;
     const newScale = Math.min(MAX_ZOOM, oldScale * scaleBy);
     
-    // Zoom to center
     const center = {
       x: stageSize.width / 2,
       y: stageSize.height / 2,
@@ -226,7 +413,6 @@ export function Canvas() {
       y: center.y - mousePointTo.y * newScale,
     };
 
-    // Constrain the new position
     const constrainedPos = constrainPosition(
       newPos,
       newScale,
@@ -238,19 +424,14 @@ export function Canvas() {
     setStagePosition(constrainedPos);
   }, [stageSize, constrainPosition]);
 
-  /**
-   * Zoom out programmatically
-   */
   const handleZoomOut = useCallback(() => {
     const stage = stageRef.current;
     if (!stage) return;
 
     const oldScale = stage.scaleX();
-    // Use 15% decrement for button clicks (faster than scroll but still smooth)
     const scaleBy = 1.15;
     const newScale = Math.max(MIN_ZOOM, oldScale / scaleBy);
     
-    // Zoom to center
     const center = {
       x: stageSize.width / 2,
       y: stageSize.height / 2,
@@ -266,7 +447,6 @@ export function Canvas() {
       y: center.y - mousePointTo.y * newScale,
     };
 
-    // Constrain the new position
     const constrainedPos = constrainPosition(
       newPos,
       newScale,
@@ -278,17 +458,11 @@ export function Canvas() {
     setStagePosition(constrainedPos);
   }, [stageSize, constrainPosition]);
 
-  /**
-   * Reset view to default
-   */
   const handleResetView = useCallback(() => {
     setStageScale(DEFAULT_ZOOM);
     setStagePosition({ x: 0, y: 0 });
   }, []);
 
-  /**
-   * Toggle grid visibility
-   */
   const handleToggleGrid = useCallback(() => {
     setShowGrid((prev) => !prev);
   }, []);
@@ -299,14 +473,13 @@ export function Canvas() {
   const renderGrid = useCallback(() => {
     if (!showGrid) return null;
 
-    const gridSize = 50; // Grid spacing in pixels
+    const gridSize = 50;
     const lines = [];
     const gridColor = '#e0e0e0';
     const thickLineColor = '#d0d0d0';
 
-    // Vertical lines
     for (let i = 0; i <= CANVAS_WIDTH; i += gridSize) {
-      const isThick = i % (gridSize * 5) === 0; // Every 5th line is thicker
+      const isThick = i % (gridSize * 5) === 0;
       lines.push(
         <Line
           key={`v-${i}`}
@@ -318,9 +491,8 @@ export function Canvas() {
       );
     }
 
-    // Horizontal lines
     for (let i = 0; i <= CANVAS_HEIGHT; i += gridSize) {
-      const isThick = i % (gridSize * 5) === 0; // Every 5th line is thicker
+      const isThick = i % (gridSize * 5) === 0;
       lines.push(
         <Line
           key={`h-${i}`}
@@ -335,79 +507,188 @@ export function Canvas() {
     return lines;
   }, [showGrid]);
 
-  return (
-    <div
-      ref={containerRef}
-      className="relative w-full h-full bg-gray-100 overflow-hidden"
-    >
-      {/* Grid Toggle */}
-      <GridToggle showGrid={showGrid} onToggle={handleToggleGrid} />
+  /**
+   * Keyboard shortcuts
+   */
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Tool shortcuts
+      if (e.key === 'v' || e.key === 'V') {
+        setSelectedTool('select');
+        return;
+      }
+      if (e.key === 'r' || e.key === 'R') {
+        setSelectedTool('rectangle');
+        return;
+      }
+      if (e.key === 'c' || e.key === 'C') {
+        setSelectedTool('circle');
+        return;
+      }
+      if (e.key === 't' || e.key === 'T') {
+        setSelectedTool('text');
+        return;
+      }
 
-      {/* Canvas Controls */}
-      <CanvasControls
-        onZoomIn={handleZoomIn}
-        onZoomOut={handleZoomOut}
-        onResetView={handleResetView}
-        currentZoom={stageScale}
+      // Delete selected shape
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedId) {
+          e.preventDefault();
+          deleteShape(selectedId);
+        }
+      }
+      
+      // Escape to deselect
+      if (e.key === 'Escape') {
+        selectShape(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedId, deleteShape, selectShape]);
+
+  const getCursorStyle = useCallback(() => {
+    if (isDragging) return 'grabbing';
+    if (isDrawing) return 'crosshair';
+    if (selectedTool === 'rectangle' || selectedTool === 'circle' || selectedTool === 'text') return 'crosshair';
+    return 'default';
+  }, [isDragging, isDrawing, selectedTool]);
+
+  return (
+    <div className="flex h-full">
+      {/* Layers Panel */}
+      <LayersPanel
+        shapes={shapes}
+        selectedId={selectedId}
+        onSelectShape={selectShape}
+        onReorderShapes={reorderShapes}
       />
 
-      {/* Konva Stage */}
-      <Stage
-        ref={stageRef}
-        width={stageSize.width}
-        height={stageSize.height}
-        draggable={true}
-        onWheel={handleWheel}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        onClick={handleStageClick}
-        onTap={handleStageClick}
-        scaleX={stageScale}
-        scaleY={stageScale}
-        x={stagePosition.x}
-        y={stagePosition.y}
-        style={{ cursor: isDragging ? 'grabbing' : 'default' }}
+      {/* Main Canvas Area */}
+      <div
+        ref={containerRef}
+        className="flex-1 relative bg-gray-100 overflow-hidden"
       >
-        <Layer>
-          {/* Canvas background */}
-          <Rect
-            x={0}
-            y={0}
-            width={CANVAS_WIDTH}
-            height={CANVAS_HEIGHT}
-            fill="white"
-            shadowColor="rgba(0, 0, 0, 0.1)"
-            shadowBlur={20}
-            shadowOffset={{ x: 0, y: 0 }}
-            listening={false}
-          />
+        {/* Grid Toggle */}
+        <GridToggle showGrid={showGrid} onToggle={handleToggleGrid} />
 
-          {/* Grid lines */}
-          {renderGrid()}
+        {/* Tool Selector */}
+        <ToolSelector selectedTool={selectedTool} onToolChange={setSelectedTool} />
 
-          {/* Shapes will be rendered here in PR #4 */}
-        </Layer>
-      </Stage>
+        {/* Canvas Controls */}
+        <CanvasControls
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+          onResetView={handleResetView}
+          currentZoom={stageScale}
+        />
 
-      {/* Canvas info overlay (for debugging) */}
-      <div className="absolute bottom-4 left-4 bg-white bg-opacity-90 px-3 py-2 rounded-lg shadow-lg text-xs text-gray-600">
-        <div className="font-semibold text-gray-700 mb-1">Canvas Info</div>
-        <div>Size: {CANVAS_WIDTH}x{CANVAS_HEIGHT}px</div>
-        <div>Zoom: {(stageScale * 100).toFixed(0)}%</div>
-        <div>Position: ({Math.round(stagePosition.x)}, {Math.round(stagePosition.y)})</div>
-        <div>Shapes: {shapes.length}</div>
-        <div className="mt-2 pt-2 border-t border-gray-200 text-gray-500">
-          <div className="flex items-center gap-1">
-            <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs">Ctrl</kbd>
-            <span>+ Drag to Pan</span>
-          </div>
-          <div className="flex items-center gap-1 mt-1">
-            <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs">Scroll</kbd>
-            <span>to Zoom</span>
+        {/* Konva Stage */}
+        <Stage
+          ref={stageRef}
+          width={stageSize.width}
+          height={stageSize.height}
+          draggable={true}
+          onWheel={handleWheel}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onClick={handleStageClick}
+          onTap={handleStageClick}
+          scaleX={stageScale}
+          scaleY={stageScale}
+          x={stagePosition.x}
+          y={stagePosition.y}
+          style={{ cursor: getCursorStyle() }}
+        >
+          <Layer>
+            {/* Canvas background */}
+            <Rect
+              x={0}
+              y={0}
+              width={CANVAS_WIDTH}
+              height={CANVAS_HEIGHT}
+              fill="white"
+              shadowColor="rgba(0, 0, 0, 0.1)"
+              shadowBlur={20}
+              shadowOffset={{ x: 0, y: 0 }}
+              listening={false}
+            />
+
+            {/* Grid lines */}
+            {renderGrid()}
+
+            {/* Render all shapes */}
+            {shapes.map((shape) => (
+              <Shape
+                key={shape.id}
+                shape={shape}
+                isSelected={shape.id === selectedId}
+                onSelect={() => selectShape(shape.id)}
+                onDragEnd={(x, y) => handleShapeDragEnd(shape.id, x, y)}
+                onTransformEnd={(updates) => handleShapeTransformEnd(shape.id, updates)}
+                isDraggable={selectedTool === 'select'}
+              />
+            ))}
+
+            {/* Shape preview while drawing */}
+            {isDrawing && newShapePreview && newShapePreview.width > 0 && newShapePreview.height > 0 && (
+              <>
+                {selectedTool === 'rectangle' && (
+                  <Rect
+                    x={newShapePreview.x}
+                    y={newShapePreview.y}
+                    width={newShapePreview.width}
+                    height={newShapePreview.height}
+                    fill={DEFAULT_SHAPE_FILL}
+                    opacity={0.5}
+                    stroke={DEFAULT_SHAPE_STROKE}
+                    strokeWidth={2}
+                    dash={[5, 5]}
+                    listening={false}
+                  />
+                )}
+                {selectedTool === 'circle' && (
+                  <Circle
+                    x={newShapePreview.x + newShapePreview.width / 2}
+                    y={newShapePreview.y + newShapePreview.height / 2}
+                    radius={Math.max(newShapePreview.width, newShapePreview.height) / 2}
+                    fill={DEFAULT_SHAPE_FILL}
+                    opacity={0.5}
+                    stroke={DEFAULT_SHAPE_STROKE}
+                    strokeWidth={2}
+                    dash={[5, 5]}
+                    listening={false}
+                  />
+                )}
+              </>
+            )}
+          </Layer>
+        </Stage>
+
+        {/* Canvas info overlay */}
+        <div className="absolute bottom-4 left-4 bg-white bg-opacity-90 px-3 py-2 rounded-lg shadow-lg text-xs text-gray-600">
+          <div className="font-semibold text-gray-700 mb-1">Canvas Info</div>
+          <div>Tool: {selectedTool}</div>
+          <div>Zoom: {(stageScale * 100).toFixed(0)}%</div>
+          <div>Shapes: {shapes.length}</div>
+          <div className="mt-2 pt-2 border-t border-gray-200 text-gray-500">
+            <div className="flex items-center gap-1">
+              <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs">Ctrl</kbd>
+              <span>+ Drag to Pan</span>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Properties Panel */}
+      <PropertiesPanel
+        selectedShape={selectedShape}
+        onUpdate={handlePropertyUpdate}
+      />
     </div>
   );
 }
-

@@ -7,27 +7,66 @@
 // Shape Types
 // ============================================================================
 
-export type ShapeType = 'rectangle';
+export type ShapeType = 'rectangle' | 'circle' | 'text';
+export type StrokePosition = 'inside' | 'center' | 'outside';
 
-export interface Shape {
+export interface BaseShape {
   id: string;
   type: ShapeType;
+  name: string;
   x: number;
   y: number;
-  width: number;
-  height: number;
-  fill: string;
   isLocked: boolean;
   lockedBy: string | null;
   lockedByName: string | null;
 }
+
+export interface RectangleShape extends BaseShape {
+  type: 'rectangle';
+  width: number;
+  height: number;
+  fill: string;
+  stroke: string;
+  strokeWidth: number;
+  strokePosition: StrokePosition;
+  cornerRadius: number;
+}
+
+export interface CircleShape extends BaseShape {
+  type: 'circle';
+  radius: number;
+  fill: string;
+  stroke: string;
+  strokeWidth: number;
+  strokePosition: StrokePosition;
+}
+
+export interface TextShape extends BaseShape {
+  type: 'text';
+  text: string;
+  fontSize: number;
+  fontFamily: string;
+  fill: string;
+  width?: number;
+}
+
+export type Shape = RectangleShape | CircleShape | TextShape;
 
 export interface ShapeUpdate {
   x?: number;
   y?: number;
   width?: number;
   height?: number;
+  radius?: number;
   fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+  strokePosition?: StrokePosition;
+  cornerRadius?: number;
+  text?: string;
+  fontSize?: number;
+  fontFamily?: string;
+  name?: string;
   isLocked?: boolean;
   lockedBy?: string | null;
   lockedByName?: string | null;
@@ -111,6 +150,7 @@ export interface CanvasContextType {
   selectShape: (id: string | null) => void;
   lockShape: (id: string, userId: string, userName: string) => Promise<void>;
   unlockShape: (id: string) => Promise<void>;
+  reorderShapes: (newOrder: Shape[]) => void;
 }
 
 // ============================================================================
