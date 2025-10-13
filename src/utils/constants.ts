@@ -7,7 +7,7 @@
 // Canvas Dimensions
 // ============================================================================
 
-export const CANVAS_WIDTH = 10000;
+export const CANVAS_WIDTH = 5000;
 export const CANVAS_HEIGHT = 5000;
 
 // Default viewport dimensions (will be dynamic based on window size)

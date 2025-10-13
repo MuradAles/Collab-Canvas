@@ -1,9 +1,10 @@
 /**
  * Shape Component
  * Renders individual shapes with proper resizing and stroke positioning
+ * Optimized with React.memo to prevent unnecessary re-renders
  */
 
-import { useCallback, useRef, useEffect } from 'react';
+import { useCallback, useRef, useEffect, memo } from 'react';
 import { Rect, Circle, Text, Transformer } from 'react-konva';
 import type Konva from 'konva';
 import type { Shape as ShapeType } from '../../types';
@@ -22,11 +23,12 @@ interface ShapeProps {
   isSelected: boolean;
   onSelect: () => void;
   onDragEnd: (x: number, y: number) => void;
-  onTransformEnd: (updates: { x?: number; y?: number; width?: number; height?: number; radius?: number }) => void;
+  onTransformEnd: (updates: { x?: number; y?: number; width?: number; height?: number; radius?: number; fontSize?: number }) => void;
   isDraggable: boolean;
+  onDoubleClick?: () => void;
 }
 
-export function Shape({ shape, isSelected, onSelect, onDragEnd, onTransformEnd, isDraggable }: ShapeProps) {
+function ShapeComponent({ shape, isSelected, onSelect, onDragEnd, onTransformEnd, isDraggable, onDoubleClick }: ShapeProps) {
   const shapeRef = useRef<Konva.Rect | Konva.Circle | Konva.Text | null>(null);
   const transformerRef = useRef<Konva.Transformer | null>(null);
 
@@ -39,7 +41,7 @@ export function Shape({ shape, isSelected, onSelect, onDragEnd, onTransformEnd, 
   }, [isSelected]);
 
   const handleTransformEnd = useCallback(
-    (e: Konva.KonvaEventObject<Event>) => {
+    () => {
       const node = shapeRef.current;
       if (!node) return;
 
@@ -61,7 +63,8 @@ export function Shape({ shape, isSelected, onSelect, onDragEnd, onTransformEnd, 
           height: newHeight,
         });
       } else if (shape.type === 'circle') {
-        const newRadius = Math.max(5, node.radius() * scaleX);
+        const circleNode = node as Konva.Circle;
+        const newRadius = Math.max(5, circleNode.radius() * scaleX);
         
         onTransformEnd({
           x: node.x(),
@@ -70,15 +73,20 @@ export function Shape({ shape, isSelected, onSelect, onDragEnd, onTransformEnd, 
         });
       } else if (shape.type === 'text') {
         const newWidth = Math.max(5, node.width() * scaleX);
+        // Scale fontSize based on the average of scaleX and scaleY
+        const scale = (scaleX + scaleY) / 2;
+        const currentFontSize = shape.type === 'text' ? shape.fontSize : 16;
+        const newFontSize = Math.max(8, Math.round(currentFontSize * scale));
         
         onTransformEnd({
           x: node.x(),
           y: node.y(),
           width: newWidth,
+          fontSize: newFontSize,
         });
       }
     },
-    [shape.type, onTransformEnd]
+    [shape, onTransformEnd]
   );
 
   const handleDragEnd = useCallback(
@@ -187,6 +195,7 @@ export function Shape({ shape, isSelected, onSelect, onDragEnd, onTransformEnd, 
           onTap={onSelect}
           onDragEnd={handleDragEnd}
           opacity={isLocked ? 0.7 : 1}
+          perfectDrawEnabled={false}
         />
         {isSelected && (
           <Transformer
@@ -233,6 +242,7 @@ export function Shape({ shape, isSelected, onSelect, onDragEnd, onTransformEnd, 
           onTap={onSelect}
           onDragEnd={handleDragEnd}
           opacity={isLocked ? 0.7 : 1}
+          perfectDrawEnabled={false}
         />
         {isSelected && (
           <Transformer
@@ -254,13 +264,16 @@ export function Shape({ shape, isSelected, onSelect, onDragEnd, onTransformEnd, 
   }
 
   if (shape.type === 'text') {
+    // Show placeholder if text is empty
+    const displayText = shape.text || 'Text';
+    
     return (
       <>
         <Text
           ref={shapeRef as React.Ref<Konva.Text>}
           x={shape.x}
           y={shape.y}
-          text={shape.text}
+          text={displayText}
           fontSize={shape.fontSize}
           fontFamily={shape.fontFamily}
           fill={shape.fill}
@@ -268,13 +281,15 @@ export function Shape({ shape, isSelected, onSelect, onDragEnd, onTransformEnd, 
           draggable={canDrag}
           onClick={onSelect}
           onTap={onSelect}
+          onDblClick={onDoubleClick}
           onDragEnd={handleDragEnd}
           opacity={isLocked ? 0.7 : 1}
+          perfectDrawEnabled={false}
         />
         {isSelected && (
           <Transformer
             ref={transformerRef as React.Ref<Konva.Transformer>}
-            enabledAnchors={['middle-left', 'middle-right']}
+            enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right', 'top-center', 'bottom-center']}
             rotateEnabled={false}
             borderStroke={SELECTION_STROKE}
             borderStrokeWidth={SELECTION_STROKE_WIDTH}
@@ -292,3 +307,15 @@ export function Shape({ shape, isSelected, onSelect, onDragEnd, onTransformEnd, 
 
   return null;
 }
+
+// Export memoized component to prevent unnecessary re-renders
+export const Shape = memo(ShapeComponent, (prevProps, nextProps) => {
+  // Custom comparison function for optimal performance
+  return (
+    prevProps.shape.id === nextProps.shape.id &&
+    prevProps.isSelected === nextProps.isSelected &&
+    prevProps.isDraggable === nextProps.isDraggable &&
+    // Deep compare shape properties
+    JSON.stringify(prevProps.shape) === JSON.stringify(nextProps.shape)
+  );
+});

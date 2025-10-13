@@ -26,7 +26,6 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
   const [shapes, setShapes] = useState<Shape[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading] = useState(false); // Will be used in PR #5 for Firestore loading
-  const stageRef = useRef<Konva.Stage | null>(null);
   
   // Counter for shape names (increments and never resets)
   const shapeCounterRef = useRef<{ [key: string]: number }>({

@@ -144,7 +144,7 @@ export interface CanvasContextType {
   shapes: Shape[];
   selectedId: string | null;
   loading: boolean;
-  addShape: (shape: Omit<Shape, 'id' | 'isLocked' | 'lockedBy' | 'lockedByName'>) => Promise<void>;
+  addShape: (shape: Omit<Shape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>) => Promise<void>;
   updateShape: (id: string, updates: ShapeUpdate) => Promise<void>;
   deleteShape: (id: string) => Promise<void>;
   selectShape: (id: string | null) => void;

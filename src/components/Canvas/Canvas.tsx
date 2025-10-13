@@ -20,7 +20,6 @@ import {
   DEFAULT_STROKE_POSITION,
   DEFAULT_CORNER_RADIUS,
   MIN_SHAPE_SIZE,
-  DEFAULT_TEXT_CONTENT,
   DEFAULT_TEXT_SIZE,
   DEFAULT_TEXT_FONT,
   DEFAULT_TEXT_FILL,
@@ -48,6 +47,7 @@ export function Canvas() {
   const [stageSize, setStageSize] = useState({ width: 1200, height: 800 });
   const [stageScale, setStageScale] = useState(DEFAULT_ZOOM);
   const [stagePosition, setStagePosition] = useState({ x: 0, y: 0 });
+  const [isInitialPositionSet, setIsInitialPositionSet] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
@@ -58,6 +58,11 @@ export function Canvas() {
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
   const [newShapePreview, setNewShapePreview] = useState<NewShapePreview | null>(null);
+  
+  // Text editing state
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const [textAreaValue, setTextAreaValue] = useState('');
+  const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const { shapes, selectedId, selectShape, addShape, updateShape, deleteShape, reorderShapes } = useCanvasContext();
 
@@ -118,6 +123,20 @@ export function Canvas() {
     window.addEventListener('resize', updateSize);
     return () => window.removeEventListener('resize', updateSize);
   }, []);
+
+  /**
+   * Center canvas on initial load
+   */
+  useEffect(() => {
+    if (!isInitialPositionSet && stageSize.width > 0 && stageSize.height > 0) {
+      // Center the canvas so the middle of the 10000x5000 canvas is at the center of the viewport
+      const centerX = stageSize.width / 2 - (CANVAS_WIDTH / 2) * stageScale;
+      const centerY = stageSize.height / 2 - (CANVAS_HEIGHT / 2) * stageScale;
+      
+      setStagePosition({ x: centerX, y: centerY });
+      setIsInitialPositionSet(true);
+    }
+  }, [stageSize, stageScale, isInitialPositionSet]);
 
   /**
    * Handle zoom with mousewheel
@@ -257,16 +276,34 @@ export function Canvas() {
           });
         } else if (selectedTool === 'text') {
           // Create text immediately at click position
-          const textShape: Omit<TextShape, 'id' | 'isLocked' | 'lockedBy' | 'lockedByName'> = {
+          const textShape: Omit<TextShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'> = {
             type: 'text',
             x: canvasPos.x,
             y: canvasPos.y,
-            text: DEFAULT_TEXT_CONTENT,
+            text: '',
             fontSize: DEFAULT_TEXT_SIZE,
             fontFamily: DEFAULT_TEXT_FONT,
             fill: DEFAULT_TEXT_FILL,
           };
-          addShape(textShape);
+          
+          // Add shape and enable editing immediately
+          addShape(textShape).then(() => {
+            // Small delay to ensure shape is added to context
+            setTimeout(() => {
+              // Access shapes from context after it updates
+              const allShapes = shapes;
+              const newShape = allShapes[allShapes.length];
+              if (newShape) {
+                setEditingTextId(newShape.id);
+                setTextAreaValue('');
+                // Focus the textarea
+                requestAnimationFrame(() => {
+                  textAreaRef.current?.focus();
+                });
+              }
+            }, 50);
+          });
+          
           setSelectedTool('select'); // Switch back to select tool
         }
       }
@@ -386,7 +423,7 @@ export function Canvas() {
    * Handle shape transform end (resize)
    */
   const handleShapeTransformEnd = useCallback(
-    (shapeId: string, updates: { x?: number; y?: number; width?: number; height?: number }) => {
+    (shapeId: string, updates: { x?: number; y?: number; width?: number; height?: number; radius?: number; fontSize?: number }) => {
       updateShape(shapeId, updates);
     },
     [updateShape]
@@ -601,6 +638,63 @@ export function Canvas() {
     };
   }, [isPanning, getCursorStyle]);
 
+  /**
+   * Start editing text shape
+   */
+  const handleTextDoubleClick = useCallback((textShape: TextShape) => {
+    setEditingTextId(textShape.id);
+    setTextAreaValue(textShape.text);
+    setTimeout(() => textAreaRef.current?.focus(), 0);
+  }, []);
+
+  /**
+   * Finish editing text and update shape
+   */
+  const handleTextEditEnd = useCallback(() => {
+    if (editingTextId) {
+      const trimmedText = textAreaValue.trim();
+      if (trimmedText) {
+        updateShape(editingTextId, { text: trimmedText });
+      } else {
+        // If text is empty, delete the shape
+        deleteShape(editingTextId);
+      }
+      setEditingTextId(null);
+      setTextAreaValue('');
+    }
+  }, [editingTextId, textAreaValue, updateShape, deleteShape]);
+
+  /**
+   * Auto-focus textarea when editing starts
+   */
+  useEffect(() => {
+    if (editingTextId && textAreaRef.current) {
+      textAreaRef.current.focus();
+      textAreaRef.current.select();
+    }
+  }, [editingTextId]);
+
+  /**
+   * Get screen position for text editing overlay
+   */
+  const getTextEditPosition = useCallback(() => {
+    if (!editingTextId) return null;
+    
+    const textShape = shapes.find(s => s.id === editingTextId);
+    if (!textShape || textShape.type !== 'text') return null;
+    
+    const container = containerRef.current;
+    if (!container) return null;
+    
+    const rect = container.getBoundingClientRect();
+    
+    // Convert canvas coordinates to screen coordinates relative to container
+    const x = textShape.x * stageScale + stagePosition.x + rect.left + 240; // 240px offset for layers panel
+    const y = textShape.y * stageScale + stagePosition.y + rect.top;
+    
+    return { x, y, shape: textShape };
+  }, [editingTextId, shapes, stageScale, stagePosition]);
+
   return (
     <div className="flex h-full">
       {/* Layers Panel */}
@@ -684,6 +778,7 @@ export function Canvas() {
                 onDragEnd={(x, y) => handleShapeDragEnd(shape.id, x, y)}
                 onTransformEnd={(updates) => handleShapeTransformEnd(shape.id, updates)}
                 isDraggable={selectedTool === 'select'}
+                onDoubleClick={shape.type === 'text' ? () => handleTextDoubleClick(shape) : undefined}
               />
             ))}
 
@@ -736,6 +831,42 @@ export function Canvas() {
           </div>
         </div>
       </div>
+
+      {/* Text Editing Overlay */}
+      {editingTextId && getTextEditPosition() && (
+        <textarea
+          ref={textAreaRef}
+          value={textAreaValue}
+          onChange={(e) => setTextAreaValue(e.target.value)}
+          onBlur={handleTextEditEnd}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              handleTextEditEnd();
+            }
+            // Don't close on Enter - allow multiline text
+            e.stopPropagation();
+          }}
+          style={{
+            position: 'absolute',
+            left: `${getTextEditPosition()!.x}px`,
+            top: `${getTextEditPosition()!.y}px`,
+            fontSize: `${getTextEditPosition()!.shape.fontSize * stageScale}px`,
+            fontFamily: getTextEditPosition()!.shape.fontFamily,
+            color: getTextEditPosition()!.shape.fill,
+            border: '2px solid #3b82f6',
+            background: 'white',
+            padding: '4px',
+            resize: 'none',
+            outline: 'none',
+            minWidth: '100px',
+            minHeight: `${getTextEditPosition()!.shape.fontSize * stageScale + 8}px`,
+            lineHeight: '1.2',
+            overflow: 'hidden',
+            zIndex: 1000,
+          }}
+          autoFocus
+        />
+      )}
 
       {/* Properties Panel */}
       <PropertiesPanel

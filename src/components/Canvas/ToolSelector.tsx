@@ -3,6 +3,7 @@
  * Allows users to switch between different tools (Select, Shapes, Text)
  */
 
+import type { ReactNode } from 'react';
 import { ShapeDropdown, type ShapeTool } from './ShapeDropdown';
 
 export type Tool = 'select' | 'rectangle' | 'circle' | 'text';
@@ -15,7 +16,7 @@ interface ToolSelectorProps {
 export function ToolSelector({ selectedTool, onToolChange }: ToolSelectorProps) {
   const isShapeTool = selectedTool === 'rectangle' || selectedTool === 'circle';
   
-  const tools: { id: 'select' | 'text'; label: string; icon: JSX.Element; shortcut: string }[] = [
+  const tools: { id: 'select' | 'text'; label: string; icon: ReactNode; shortcut: string }[] = [
     {
       id: 'select',
       label: 'Select',
@@ -36,21 +37,14 @@ export function ToolSelector({ selectedTool, onToolChange }: ToolSelectorProps) 
       label: 'Text',
       shortcut: 'T',
       icon: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M7 8h10M7 12h10m-6 8h2M9 4h6v16H9z"
-          />
-        </svg>
+        <span className="text-xl font-bold flex items-center justify-center">T</span>
       ),
     },
   ];
 
   return (
     <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10">
-      <div className="bg-white rounded-lg shadow-lg p-2 flex gap-1">
+      <div className="bg-white rounded-lg shadow-lg p-2 flex gap-1 items-center">
         {/* Select Tool */}
         <button
           onClick={() => onToolChange('select')}

@@ -1,9 +1,10 @@
 /**
  * Properties Panel Component
  * Figma-style right panel for editing shape properties
+ * Optimized with React.memo to prevent unnecessary re-renders
  */
 
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, memo } from 'react';
 import type { Shape, RectangleShape, CircleShape, TextShape, StrokePosition } from '../../types';
 
 interface PropertiesPanelProps {
@@ -11,7 +12,7 @@ interface PropertiesPanelProps {
   onUpdate: (updates: Partial<Shape>) => void;
 }
 
-export function PropertiesPanel({ selectedShape, onUpdate }: PropertiesPanelProps) {
+function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelProps) {
   const [hasFill, setHasFill] = useState(true);
   const [hasStroke, setHasStroke] = useState(true);
 
@@ -506,3 +507,12 @@ export function PropertiesPanel({ selectedShape, onUpdate }: PropertiesPanelProp
     </div>
   );
 }
+
+// Export memoized component to prevent unnecessary re-renders
+export const PropertiesPanel = memo(PropertiesPanelComponent, (prevProps, nextProps) => {
+  // Only re-render if selectedShape changed
+  return (
+    prevProps.selectedShape?.id === nextProps.selectedShape?.id &&
+    JSON.stringify(prevProps.selectedShape) === JSON.stringify(nextProps.selectedShape)
+  );
+});

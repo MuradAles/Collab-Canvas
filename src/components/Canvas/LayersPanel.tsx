@@ -1,9 +1,10 @@
 /**
  * Layers Panel Component
  * Figma-style left panel showing all shapes with drag-to-reorder and arrow controls
+ * Optimized with React.memo to prevent unnecessary re-renders
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, memo } from 'react';
 import type { Shape } from '../../types';
 
 interface LayersPanelProps {
@@ -13,7 +14,7 @@ interface LayersPanelProps {
   onReorderShapes: (newOrder: Shape[]) => void;
 }
 
-export function LayersPanel({ shapes, selectedId, onSelectShape, onReorderShapes }: LayersPanelProps) {
+function LayersPanelComponent({ shapes, selectedId, onSelectShape, onReorderShapes }: LayersPanelProps) {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
@@ -76,31 +77,96 @@ export function LayersPanel({ shapes, selectedId, onSelectShape, onReorderShapes
   }, []);
 
 
-  const getShapeIcon = (shape: Shape) => {
+  const getShapePreview = (shape: Shape) => {
+    const getFillColor = () => {
+      if ('fill' in shape) {
+        return shape.fill === 'transparent' ? '#ffffff' : shape.fill;
+      }
+      return '#e0e0e0';
+    };
+
+    const getStroke = () => {
+      if (shape.type === 'rectangle' || shape.type === 'circle') {
+        return shape.stroke === 'transparent' ? '#d1d5db' : shape.stroke;
+      }
+      return '#d1d5db';
+    };
+
+    // Calculate proportional size (max 32px container)
+    const calculateSize = (width: number, height: number) => {
+      const maxSize = 32;
+      const minSize = 12;
+      const aspectRatio = width / height;
+      
+      let previewWidth, previewHeight;
+      
+      if (aspectRatio > 1) {
+        // Wider than tall
+        previewWidth = maxSize;
+        previewHeight = Math.max(minSize, maxSize / aspectRatio);
+      } else {
+        // Taller than wide
+        previewHeight = maxSize;
+        previewWidth = Math.max(minSize, maxSize * aspectRatio);
+      }
+      
+      return { width: previewWidth, height: previewHeight };
+    };
+
     if (shape.type === 'rectangle') {
+      const { width, height } = calculateSize(shape.width, shape.height);
       return (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <rect x="3" y="3" width="18" height="18" strokeWidth={2} rx="2" />
-        </svg>
+        <div 
+          className="flex items-center justify-center flex-shrink-0"
+          style={{ width: '32px', height: '32px' }}
+        >
+          <div 
+            className="rounded border-2"
+            style={{ 
+              width: `${width}px`,
+              height: `${height}px`,
+              backgroundColor: getFillColor(),
+              borderColor: getStroke(),
+              borderRadius: shape.cornerRadius > 0 ? '4px' : '2px'
+            }}
+          />
+        </div>
       );
     }
     if (shape.type === 'circle') {
+      const size = Math.min(32, Math.max(16, shape.radius * 0.4)); // Scale down radius for preview
       return (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <circle cx="12" cy="12" r="9" strokeWidth={2} />
-        </svg>
+        <div 
+          className="flex items-center justify-center flex-shrink-0"
+          style={{ width: '32px', height: '32px' }}
+        >
+          <div 
+            className="rounded-full border-2"
+            style={{ 
+              width: `${size}px`,
+              height: `${size}px`,
+              backgroundColor: getFillColor(),
+              borderColor: getStroke()
+            }}
+          />
+        </div>
       );
     }
     if (shape.type === 'text') {
+      // Scale text preview based on fontSize
+      const fontSize = Math.min(18, Math.max(12, shape.fontSize * 0.5));
       return (
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M7 8h10M7 12h10m-6 8h2M9 4h6v16H9z"
-          />
-        </svg>
+        <div 
+          className="flex items-center justify-center font-bold flex-shrink-0"
+          style={{ 
+            width: '32px',
+            height: '32px',
+            color: getFillColor(),
+            fontSize: `${fontSize}px`
+          }}
+        >
+          T
+        </div>
       );
     }
     return null;
@@ -192,10 +258,8 @@ export function LayersPanel({ shapes, selectedId, onSelectShape, onReorderShapes
                     </svg>
                   </div>
 
-                  {/* Shape Icon */}
-                  <div className={isSelected ? 'text-blue-600' : 'text-gray-600'}>
-                    {getShapeIcon(shape)}
-                  </div>
+                  {/* Shape Preview */}
+                  {getShapePreview(shape)}
 
                   {/* Shape Name */}
                   <div className="flex-1 min-w-0">
@@ -243,3 +307,15 @@ export function LayersPanel({ shapes, selectedId, onSelectShape, onReorderShapes
     </div>
   );
 }
+
+// Export memoized component to prevent unnecessary re-renders
+export const LayersPanel = memo(LayersPanelComponent, (prevProps, nextProps) => {
+  // Only re-render if shapes array changed, selectedId changed, or callbacks changed
+  return (
+    prevProps.selectedId === nextProps.selectedId &&
+    prevProps.shapes.length === nextProps.shapes.length &&
+    prevProps.shapes.every((shape, index) => 
+      JSON.stringify(shape) === JSON.stringify(nextProps.shapes[index])
+    )
+  );
+});
