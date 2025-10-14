@@ -569,14 +569,20 @@ export function Canvas() {
 
   /**
    * Handle shape transform end (resize/rotation)
-   * Also update cursor position after transform
+   * Also update cursor position after transform and clear RTDB state
    */
   const handleShapeTransformEnd = useCallback(
-    (shapeId: string, updates: { x?: number; y?: number; width?: number; height?: number; radius?: number; fontSize?: number; rotation?: number }) => {
-      updateShape(shapeId, updates);
+    async (shapeId: string, updates: { x?: number; y?: number; width?: number; height?: number; radius?: number; fontSize?: number; rotation?: number }) => {
+      if (!currentUser) return;
 
-      // Update cursor position after transform
-      if (currentUser) {
+      try {
+        // Save final state to Firestore
+        await updateShape(shapeId, updates);
+        
+        // Clear real-time drag/rotation position from RTDB
+        await clearDragPosition('global-canvas-v1', shapeId);
+
+        // Update cursor position after transform
         const stage = stageRef.current;
         if (stage) {
           const pointer = stage.getPointerPosition();
@@ -591,6 +597,8 @@ export function Canvas() {
             updateCursorPosition(currentUser.uid, canvasPos.x, canvasPos.y);
           }
         }
+      } catch (error) {
+        console.error('Failed to update shape:', error);
       }
     },
     [updateShape, currentUser, stagePosition, stageScale]
