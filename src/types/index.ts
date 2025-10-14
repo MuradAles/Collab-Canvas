@@ -19,6 +19,9 @@ export interface BaseShape {
   isLocked: boolean;
   lockedBy: string | null;
   lockedByName: string | null;
+  isDragging?: boolean;
+  draggingBy?: string | null;
+  draggingByName?: string | null;
 }
 
 export interface RectangleShape extends BaseShape {
@@ -70,6 +73,9 @@ export interface ShapeUpdate {
   isLocked?: boolean;
   lockedBy?: string | null;
   lockedByName?: string | null;
+  isDragging?: boolean;
+  draggingBy?: string | null;
+  draggingByName?: string | null;
 }
 
 // ============================================================================
@@ -140,10 +146,19 @@ export interface PresenceMap {
 // Canvas Context Types
 // ============================================================================
 
+export interface OnlineUser {
+  uid: string;
+  displayName: string;
+  color: string;
+  lastSeen: number | object;
+  isOnline: boolean;
+}
+
 export interface CanvasContextType {
   shapes: Shape[];
   selectedId: string | null;
   loading: boolean;
+  onlineUsers: OnlineUser[];
   addShape: (shape: Omit<Shape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>) => Promise<void>;
   updateShape: (id: string, updates: ShapeUpdate) => Promise<void>;
   deleteShape: (id: string) => Promise<void>;

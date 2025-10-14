@@ -3,23 +3,149 @@
  * Tests for canvas state management
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { CanvasProvider, useCanvasContext } from '../../../src/contexts/CanvasContext';
+import { AuthProvider } from '../../../src/contexts/AuthContext';
 
-// Wrapper component for testing
+// Mock state to simulate Firestore
+let mockShapes: any[] = [];
+let mockSubscriptionCallback: ((shapes: any[]) => void) | null = null;
+
+// Mock Firebase services
+vi.mock('../../../src/services/canvas', () => ({
+  initializeCanvas: vi.fn(() => Promise.resolve()),
+  subscribeToShapes: vi.fn((callback) => {
+    // Store callback to simulate real-time updates
+    mockSubscriptionCallback = callback;
+    // Call callback with current shapes
+    callback(mockShapes);
+    // Return unsubscribe function
+    return () => {
+      mockSubscriptionCallback = null;
+    };
+  }),
+  createShape: vi.fn((shape) => {
+    // Add shape to mock state
+    mockShapes = [...mockShapes, shape];
+    // Trigger subscription callback
+    if (mockSubscriptionCallback) {
+      mockSubscriptionCallback(mockShapes);
+    }
+    return Promise.resolve();
+  }),
+  updateShape: vi.fn((id, updates) => {
+    // Update shape in mock state
+    mockShapes = mockShapes.map(s => s.id === id ? { ...s, ...updates } : s);
+    // Trigger subscription callback
+    if (mockSubscriptionCallback) {
+      mockSubscriptionCallback(mockShapes);
+    }
+    return Promise.resolve();
+  }),
+  deleteShape: vi.fn((id) => {
+    // Remove shape from mock state
+    mockShapes = mockShapes.filter(s => s.id !== id);
+    // Trigger subscription callback
+    if (mockSubscriptionCallback) {
+      mockSubscriptionCallback(mockShapes);
+    }
+    return Promise.resolve();
+  }),
+  lockShape: vi.fn((id, userId, userName) => {
+    // Update lock state in mock
+    mockShapes = mockShapes.map(s => 
+      s.id === id ? { ...s, isLocked: true, lockedBy: userId, lockedByName: userName } : s
+    );
+    // Trigger subscription callback
+    if (mockSubscriptionCallback) {
+      mockSubscriptionCallback(mockShapes);
+    }
+    return Promise.resolve();
+  }),
+  unlockShape: vi.fn((id) => {
+    // Update lock state in mock
+    mockShapes = mockShapes.map(s => 
+      s.id === id ? { ...s, isLocked: false, lockedBy: null, lockedByName: null } : s
+    );
+    // Trigger subscription callback
+    if (mockSubscriptionCallback) {
+      mockSubscriptionCallback(mockShapes);
+    }
+    return Promise.resolve();
+  }),
+  cleanupUserLocks: vi.fn(() => Promise.resolve()),
+}));
+
+// Mock Presence service
+vi.mock('../../../src/services/presence', () => ({
+  setUserOnline: vi.fn(() => Promise.resolve()),
+  setUserOffline: vi.fn(() => Promise.resolve()),
+  subscribeToPresence: vi.fn((callback) => {
+    // Call callback with empty array initially
+    callback([]);
+    // Return unsubscribe function
+    return () => {};
+  }),
+}));
+
+// Mock Drag Sync service  
+vi.mock('../../../src/services/dragSync', () => ({
+  updateDragPosition: vi.fn(() => Promise.resolve()),
+  clearDragPosition: vi.fn(() => Promise.resolve()),
+  subscribeToDragPositions: vi.fn((canvasId, callback) => {
+    // Call callback with empty Map initially
+    callback(new Map());
+    // Return unsubscribe function
+    return () => {};
+  }),
+}));
+
+// Mock Firebase Auth
+vi.mock('firebase/auth', () => ({
+  getAuth: vi.fn(() => ({})),
+  onAuthStateChanged: vi.fn((auth, callback) => {
+    // Simulate logged in user
+    callback({ uid: 'test-user', email: 'test@example.com', displayName: 'Test User' });
+    return () => {};
+  }),
+  signInWithEmailAndPassword: vi.fn(),
+  createUserWithEmailAndPassword: vi.fn(),
+  signOut: vi.fn(),
+  updateProfile: vi.fn(),
+  GoogleAuthProvider: vi.fn(),
+  signInWithPopup: vi.fn(),
+}));
+
+// Wrapper component for testing - wraps in both Auth and Canvas providers
 function wrapper({ children }: { children: ReactNode }) {
-  return <CanvasProvider>{children}</CanvasProvider>;
+  return (
+    <AuthProvider>
+      <CanvasProvider>{children}</CanvasProvider>
+    </AuthProvider>
+  );
 }
 
 describe('CanvasContext', () => {
+  // Reset mock state before each test
+  beforeEach(() => {
+    mockShapes = [];
+    mockSubscriptionCallback = null;
+  });
+
   describe('Initial State', () => {
-    it('should provide initial empty shapes array', () => {
+    it('should provide initial empty shapes array', async () => {
       const { result } = renderHook(() => useCanvasContext(), { wrapper });
+      
+      // Wait for subscription to complete (loading becomes false)
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 0));
+      });
       
       expect(result.current.shapes).toEqual([]);
       expect(result.current.selectedId).toBeNull();
+      // Loading should be false after subscription completes
       expect(result.current.loading).toBe(false);
     });
 

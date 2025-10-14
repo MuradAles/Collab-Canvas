@@ -4,8 +4,8 @@
  * Optimized with React.memo to prevent unnecessary re-renders
  */
 
-import { useCallback, useRef, useEffect, memo } from 'react';
-import { Rect, Circle, Text, Transformer } from 'react-konva';
+import { useCallback, useRef, useEffect, memo, useState } from 'react';
+import { Rect, Circle, Text, Transformer, Label, Tag } from 'react-konva';
 import type Konva from 'konva';
 import type { Shape as ShapeType } from '../../types';
 import {
@@ -22,15 +22,19 @@ interface ShapeProps {
   shape: ShapeType;
   isSelected: boolean;
   onSelect: () => void;
+  onDragStart?: () => void;
+  onDragMove?: (x: number, y: number) => void;
   onDragEnd: (x: number, y: number) => void;
   onTransformEnd: (updates: { x?: number; y?: number; width?: number; height?: number; radius?: number; fontSize?: number }) => void;
   isDraggable: boolean;
+  currentUserId?: string;
   onDoubleClick?: () => void;
 }
 
-function ShapeComponent({ shape, isSelected, onSelect, onDragEnd, onTransformEnd, isDraggable, onDoubleClick }: ShapeProps) {
+function ShapeComponent({ shape, isSelected, onSelect, onDragStart, onDragMove, onDragEnd, onTransformEnd, isDraggable, currentUserId, onDoubleClick }: ShapeProps) {
   const shapeRef = useRef<Konva.Rect | Konva.Circle | Konva.Text | null>(null);
   const transformerRef = useRef<Konva.Transformer | null>(null);
+  const [isLocalDragging, setIsLocalDragging] = useState(false);
 
   // Attach transformer to shape when selected
   useEffect(() => {
@@ -89,8 +93,40 @@ function ShapeComponent({ shape, isSelected, onSelect, onDragEnd, onTransformEnd
     [shape, onTransformEnd]
   );
 
+  const handleDragStart = useCallback(() => {
+    setIsLocalDragging(true);
+    if (onDragStart) {
+      onDragStart();
+    }
+  }, [onDragStart]);
+
+  const handleDragMove = useCallback(
+    (e: Konva.KonvaEventObject<DragEvent>) => {
+      if (!onDragMove) return;
+      
+      const node = e.target;
+      let x = node.x();
+      let y = node.y();
+      
+      // Adjust for stroke positioning
+      if (shape.type === 'rectangle' && shape.strokePosition === 'outside') {
+        const offset = shape.strokeWidth / 2;
+        x += offset;
+        y += offset;
+      } else if (shape.type === 'rectangle' && shape.strokePosition === 'inside') {
+        const offset = shape.strokeWidth / 2;
+        x -= offset;
+        y -= offset;
+      }
+      
+      onDragMove(x, y);
+    },
+    [shape, onDragMove]
+  );
+
   const handleDragEnd = useCallback(
     (e: Konva.KonvaEventObject<DragEvent>) => {
+      setIsLocalDragging(false);
       const node = e.target;
       let x = node.x();
       let y = node.y();
@@ -138,10 +174,14 @@ function ShapeComponent({ shape, isSelected, onSelect, onDragEnd, onTransformEnd
 
   const isLocked = shape.isLocked && shape.lockedBy !== null;
   const canDrag = isDraggable && !isLocked;
+  
+  // Check if this shape is being dragged by another user
+  const isDraggedByOther = shape.isDragging && shape.draggingBy !== currentUserId && !isLocalDragging;
 
   // Determine stroke color and width
   const getStrokeColor = () => {
     if (isLocked) return LOCKED_STROKE;
+    if (isDraggedByOther) return '#f59e0b'; // Amber color for shapes being dragged by others
     if (shape.type === 'rectangle' || shape.type === 'circle') {
       return shape.stroke === 'transparent' ? undefined : shape.stroke;
     }
@@ -150,10 +190,97 @@ function ShapeComponent({ shape, isSelected, onSelect, onDragEnd, onTransformEnd
 
   const getStrokeWidth = () => {
     if (isLocked) return LOCKED_STROKE_WIDTH;
+    if (isDraggedByOther) return 3; // Thicker border for shapes being dragged by others
     if (shape.type === 'rectangle' || shape.type === 'circle') {
       return shape.strokeWidth;
     }
     return 0;
+  };
+  
+  // Determine opacity - slightly transparent if being dragged by another user
+  const getOpacity = () => {
+    if (isLocked) return 0.7;
+    if (isDraggedByOther) return 0.85;
+    return 1;
+  };
+
+  /**
+   * Render indicator showing who is currently interacting with the shape
+   */
+  const renderIndicator = () => {
+    // Show dragging indicator for shapes being dragged by others
+    if (isDraggedByOther && shape.draggingByName) {
+      let labelX = shape.x;
+      let labelY = shape.y - 25;
+
+      if (shape.type === 'circle') {
+        labelY = shape.y - shape.radius - 25;
+      }
+
+      return (
+        <Label x={labelX} y={labelY} opacity={0.95}>
+          <Tag
+            fill="#f59e0b"
+            pointerDirection="down"
+            pointerWidth={8}
+            pointerHeight={6}
+            lineJoin="round"
+            shadowColor="black"
+            shadowBlur={5}
+            shadowOffsetX={2}
+            shadowOffsetY={2}
+            shadowOpacity={0.3}
+          />
+          <Text
+            text={`✋ ${shape.draggingByName} is moving`}
+            fontFamily="Arial"
+            fontSize={12}
+            padding={6}
+            fill="white"
+            fontStyle="bold"
+          />
+        </Label>
+      );
+    }
+    
+    return null;
+  };
+  
+  const renderLockIndicator = () => {
+    if (!isLocked || !shape.lockedByName) return null;
+
+    // Position the label above the shape
+    let labelX = shape.x;
+    let labelY = shape.y - 25; // 25px above shape
+
+    if (shape.type === 'circle') {
+      labelY = shape.y - shape.radius - 25;
+    }
+
+    return (
+      <Label x={labelX} y={labelY} opacity={0.95}>
+        <Tag
+          fill="#ff6b6b"
+          pointerDirection="down"
+          pointerWidth={8}
+          pointerHeight={6}
+          lineJoin="round"
+          shadowColor="black"
+          shadowBlur={5}
+          shadowOffsetX={2}
+          shadowOffsetY={2}
+          shadowOpacity={0.3}
+        />
+        <Text
+          text={`🔒 ${shape.lockedByName} is editing`}
+          fontFamily="Arial"
+          fontSize={12}
+          padding={6}
+          fill="white"
+          fontStyle="bold"
+        />
+      </Label>
+    );
   };
 
   if (shape.type === 'rectangle') {
@@ -193,8 +320,10 @@ function ShapeComponent({ shape, isSelected, onSelect, onDragEnd, onTransformEnd
           draggable={canDrag}
           onClick={onSelect}
           onTap={onSelect}
+          onDragStart={handleDragStart}
+          onDragMove={handleDragMove}
           onDragEnd={handleDragEnd}
-          opacity={isLocked ? 0.7 : 1}
+          opacity={getOpacity()}
           perfectDrawEnabled={false}
         />
         {isSelected && (
@@ -212,6 +341,7 @@ function ShapeComponent({ shape, isSelected, onSelect, onDragEnd, onTransformEnd
             onTransformEnd={handleTransformEnd}
           />
         )}
+        {renderLockIndicator()}
       </>
     );
   }
@@ -240,8 +370,10 @@ function ShapeComponent({ shape, isSelected, onSelect, onDragEnd, onTransformEnd
           draggable={canDrag}
           onClick={onSelect}
           onTap={onSelect}
+          onDragStart={handleDragStart}
+          onDragMove={handleDragMove}
           onDragEnd={handleDragEnd}
-          opacity={isLocked ? 0.7 : 1}
+          opacity={getOpacity()}
           perfectDrawEnabled={false}
         />
         {isSelected && (
@@ -259,6 +391,8 @@ function ShapeComponent({ shape, isSelected, onSelect, onDragEnd, onTransformEnd
             onTransformEnd={handleTransformEnd}
           />
         )}
+        {renderIndicator()}
+        {renderLockIndicator()}
       </>
     );
   }
@@ -282,8 +416,10 @@ function ShapeComponent({ shape, isSelected, onSelect, onDragEnd, onTransformEnd
           onClick={onSelect}
           onTap={onSelect}
           onDblClick={onDoubleClick}
+          onDragStart={handleDragStart}
+          onDragMove={handleDragMove}
           onDragEnd={handleDragEnd}
-          opacity={isLocked ? 0.7 : 1}
+          opacity={getOpacity()}
           perfectDrawEnabled={false}
         />
         {isSelected && (
@@ -301,6 +437,8 @@ function ShapeComponent({ shape, isSelected, onSelect, onDragEnd, onTransformEnd
             onTransformEnd={handleTransformEnd}
           />
         )}
+        {renderIndicator()}
+        {renderLockIndicator()}
       </>
     );
   }

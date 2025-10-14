@@ -1,7 +1,7 @@
 /**
  * Canvas Context
- * Manages canvas state including shapes, selections, and stage reference
- * For MVP: Local state only (real-time sync will be added in PR #5)
+ * Manages canvas state including shapes, selections, and real-time Firestore sync
+ * PR #5: Integrated real-time synchronization with Firestore
  */
 
 import {
@@ -10,11 +10,33 @@ import {
   useState,
   useRef,
   useCallback,
+  useEffect,
   type ReactNode,
 } from 'react';
-import type Konva from 'konva';
 import type { Shape, ShapeUpdate, CanvasContextType } from '../types';
 import { generateId } from '../utils/helpers';
+import { useAuth } from './AuthContext';
+import {
+  initializeCanvas,
+  subscribeToShapes,
+  createShape as createShapeInFirestore,
+  updateShape as updateShapeInFirestore,
+  deleteShape as deleteShapeInFirestore,
+  reorderShapes as reorderShapesInFirestore,
+  lockShape as lockShapeInFirestore,
+  unlockShape as unlockShapeInFirestore,
+  cleanupUserLocks,
+} from '../services/canvas';
+import {
+  setUserOnline,
+  setUserOffline,
+  subscribeToPresence,
+  type PresenceData,
+} from '../services/presence';
+import {
+  subscribeToDragPositions,
+  type DragPosition,
+} from '../services/dragSync';
 
 const CanvasContext = createContext<CanvasContextType | null>(null);
 
@@ -25,7 +47,10 @@ interface CanvasProviderProps {
 export function CanvasProvider({ children }: CanvasProviderProps) {
   const [shapes, setShapes] = useState<Shape[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [loading] = useState(false); // Will be used in PR #5 for Firestore loading
+  const [loading, setLoading] = useState(true);
+  const [onlineUsers, setOnlineUsers] = useState<PresenceData[]>([]);
+  const [dragPositions, setDragPositions] = useState<Map<string, DragPosition>>(new Map());
+  const { currentUser } = useAuth();
   
   // Counter for shape names (increments and never resets)
   const shapeCounterRef = useRef<{ [key: string]: number }>({
@@ -34,12 +59,95 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
     text: 0,
   });
 
+  // ============================================================================
+  // Initialize Canvas and Subscribe to Real-Time Updates
+  // ============================================================================
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let unsubscribeShapes: (() => void) | null = null;
+    let unsubscribePresence: (() => void) | null = null;
+    let unsubscribeDrag: (() => void) | null = null;
+
+    const setupCanvas = async () => {
+      try {
+        // Initialize canvas document in Firestore
+        await initializeCanvas();
+
+        // Subscribe to real-time shape updates (persistent state from Firestore)
+        unsubscribeShapes = subscribeToShapes((updatedShapes) => {
+          setShapes(updatedShapes);
+          setLoading(false);
+          
+          // Update shape counters based on existing shapes
+          const counters = { rectangle: 0, circle: 0, text: 0 };
+          updatedShapes.forEach((shape) => {
+            const match = shape.name.match(/(\d+)$/);
+            if (match) {
+              const num = parseInt(match[1], 10);
+              if (num > counters[shape.type]) {
+                counters[shape.type] = num;
+              }
+            }
+          });
+          shapeCounterRef.current = counters;
+        });
+
+        // Subscribe to real-time drag positions (ephemeral state from RTDB for <100ms sync)
+        unsubscribeDrag = subscribeToDragPositions('global-canvas-v1', (positions) => {
+          setDragPositions(positions);
+        });
+
+        // Set user as online and subscribe to presence
+        await setUserOnline(
+          currentUser.uid,
+          currentUser.displayName || 'Unknown User'
+        );
+
+        unsubscribePresence = subscribeToPresence((users) => {
+          setOnlineUsers(users);
+        });
+      } catch (error) {
+        console.error('Failed to setup canvas:', error);
+        setLoading(false);
+      }
+    };
+
+    setupCanvas();
+
+    // Cleanup: unsubscribe and release locks on unmount
+    return () => {
+      if (unsubscribeShapes) {
+        unsubscribeShapes();
+      }
+      if (unsubscribePresence) {
+        unsubscribePresence();
+      }
+      if (unsubscribeDrag) {
+        unsubscribeDrag();
+      }
+      if (currentUser) {
+        cleanupUserLocks(currentUser.uid).catch(console.error);
+        setUserOffline(currentUser.uid).catch(console.error);
+      }
+    };
+  }, [currentUser]);
+
+  // ============================================================================
+  // Shape CRUD Operations (with Firestore sync)
+  // ============================================================================
+
   /**
    * Adds a new shape to the canvas
-   * For MVP: Supports rectangles and text with local state
+   * Syncs to Firestore for real-time collaboration
    */
   const addShape = useCallback(
     async (shapeData: Omit<Shape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>) => {
+      if (!currentUser) {
+        throw new Error('Must be logged in to create shapes');
+      }
+
       // Increment counter and generate name
       shapeCounterRef.current[shapeData.type] += 1;
       const shapeNumber = shapeCounterRef.current[shapeData.type];
@@ -62,41 +170,62 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
         lockedByName: null,
       } as Shape;
 
-      setShapes((prev) => [...prev, newShape]);
-      
-      // Auto-select the newly created shape
-      setSelectedId(newShape.id);
+      try {
+        await createShapeInFirestore(newShape);
+        // Auto-select the newly created shape
+        setSelectedId(newShape.id);
+      } catch (error) {
+        console.error('Failed to add shape:', error);
+        throw error;
+      }
     },
-    []
+    [currentUser]
   );
 
   /**
    * Updates an existing shape
+   * Syncs to Firestore
    */
-  const updateShape = useCallback(async (id: string, updates: ShapeUpdate) => {
-    setShapes((prev) =>
-      prev.map((shape) =>
-        shape.id === id ? { ...shape, ...updates } : shape
-      )
-    );
-  }, []);
+  const updateShape = useCallback(
+    async (id: string, updates: ShapeUpdate) => {
+      if (!currentUser) {
+        throw new Error('Must be logged in to update shapes');
+      }
+
+      try {
+        await updateShapeInFirestore(id, updates);
+      } catch (error) {
+        console.error('Failed to update shape:', error);
+        throw error;
+      }
+    },
+    [currentUser]
+  );
 
   /**
    * Deletes a shape from the canvas
-   * Cannot delete shapes locked by other users (will matter in PR #5)
+   * Cannot delete shapes locked by other users
    */
-  const deleteShape = useCallback(async (id: string) => {
-    setShapes((prev) => {
-      const shape = prev.find((s) => s.id === id);
-      // For MVP, allow deletion. Lock check will be enforced in PR #5
-      if (!shape) return prev;
-      
-      return prev.filter((s) => s.id !== id);
-    });
-    
-    // Deselect if the deleted shape was selected
-    setSelectedId((prev) => (prev === id ? null : prev));
-  }, []);
+  const deleteShape = useCallback(
+    async (id: string) => {
+      if (!currentUser) {
+        throw new Error('Must be logged in to delete shapes');
+      }
+
+      try {
+        await deleteShapeInFirestore(id, currentUser.uid);
+        // Deselect if the deleted shape was selected
+        setSelectedId((prev) => (prev === id ? null : prev));
+      } catch (error) {
+        console.error('Failed to delete shape:', error);
+        // Show user-friendly error message
+        if (error instanceof Error) {
+          alert(error.message);
+        }
+      }
+    },
+    [currentUser]
+  );
 
   /**
    * Sets the selected shape ID
@@ -107,54 +236,93 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
 
   /**
    * Reorders shapes (for z-index management)
+   * Syncs to Firestore
    */
-  const reorderShapes = useCallback((newOrder: Shape[]) => {
-    setShapes(newOrder);
-  }, []);
+  const reorderShapes = useCallback(
+    async (newOrder: Shape[]) => {
+      if (!currentUser) {
+        throw new Error('Must be logged in to reorder shapes');
+      }
+
+      try {
+        await reorderShapesInFirestore(newOrder);
+      } catch (error) {
+        console.error('Failed to reorder shapes:', error);
+        throw error;
+      }
+    },
+    [currentUser]
+  );
+
+  // ============================================================================
+  // Shape Locking (for drag operations)
+  // ============================================================================
 
   /**
-   * Locks a shape (will be fully implemented in PR #5 with Firestore)
+   * Locks a shape when user starts dragging
+   * Syncs to Firestore and sets up auto-release
    */
   const lockShape = useCallback(
     async (id: string, userId: string, userName: string) => {
-      setShapes((prev) =>
-        prev.map((shape) =>
-          shape.id === id
-            ? {
-                ...shape,
-                isLocked: true,
-                lockedBy: userId,
-                lockedByName: userName,
-              }
-            : shape
-        )
-      );
+      if (!currentUser) {
+        throw new Error('Must be logged in to lock shapes');
+      }
+
+      try {
+        await lockShapeInFirestore(id, userId, userName);
+      } catch (error) {
+        console.error('Failed to lock shape:', error);
+        // Show user-friendly error message
+        if (error instanceof Error) {
+          alert(error.message);
+        }
+        throw error;
+      }
     },
-    []
+    [currentUser]
   );
 
   /**
-   * Unlocks a shape (will be fully implemented in PR #5 with Firestore)
+   * Unlocks a shape when user stops dragging
+   * Syncs to Firestore
    */
-  const unlockShape = useCallback(async (id: string) => {
-    setShapes((prev) =>
-      prev.map((shape) =>
-        shape.id === id
-          ? {
-              ...shape,
-              isLocked: false,
-              lockedBy: null,
-              lockedByName: null,
-            }
-          : shape
-      )
-    );
-  }, []);
+  const unlockShape = useCallback(
+    async (id: string) => {
+      if (!currentUser) {
+        return;
+      }
+
+      try {
+        await unlockShapeInFirestore(id, currentUser.uid);
+      } catch (error) {
+        console.error('Failed to unlock shape:', error);
+      }
+    },
+    [currentUser]
+  );
+
+  // Merge real-time drag positions with persistent shapes for ultra-smooth updates
+  const shapesWithDragPositions = shapes.map(shape => {
+    const dragPos = dragPositions.get(shape.id);
+    if (dragPos && dragPos.draggingBy !== currentUser?.uid) {
+      // Apply real-time position from RTDB if being dragged by another user
+      return {
+        ...shape,
+        x: dragPos.x,
+        y: dragPos.y,
+        isDragging: true,
+        draggingBy: dragPos.draggingBy,
+        draggingByName: dragPos.draggingByName,
+      };
+    }
+    return shape;
+  });
 
   const value: CanvasContextType = {
-    shapes,
+    shapes: shapesWithDragPositions,
     selectedId,
     loading,
+    onlineUsers,
     addShape,
     updateShape,
     deleteShape,

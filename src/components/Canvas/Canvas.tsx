@@ -8,6 +8,7 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import { Stage, Layer, Line, Rect, Circle } from 'react-konva';
 import type Konva from 'konva';
 import { useCanvasContext } from '../../contexts/CanvasContext';
+import { useAuth } from '../../contexts/AuthContext';
 import {
   CANVAS_WIDTH,
   CANVAS_HEIGHT,
@@ -25,6 +26,7 @@ import {
   DEFAULT_TEXT_FILL,
 } from '../../utils/constants';
 import { screenToCanvas, normalizeRectangle } from '../../utils/helpers';
+import { updateDragPosition, clearDragPosition } from '../../services/dragSync';
 import { CanvasControls } from './CanvasControls';
 import { GridToggle } from './GridToggle';
 import { ToolSelector, type Tool } from './ToolSelector';
@@ -48,7 +50,6 @@ export function Canvas() {
   const [stageScale, setStageScale] = useState(DEFAULT_ZOOM);
   const [stagePosition, setStagePosition] = useState({ x: 0, y: 0 });
   const [isInitialPositionSet, setIsInitialPositionSet] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
   const [showGrid, setShowGrid] = useState(true);
@@ -64,7 +65,8 @@ export function Canvas() {
   const [textAreaValue, setTextAreaValue] = useState('');
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const { shapes, selectedId, selectShape, addShape, updateShape, deleteShape, reorderShapes } = useCanvasContext();
+  const { shapes, selectedId, selectShape, addShape, updateShape, deleteShape, reorderShapes, loading } = useCanvasContext();
+  const { currentUser } = useAuth();
 
   const selectedShape = shapes.find(s => s.id === selectedId) || null;
 
@@ -410,13 +412,70 @@ export function Canvas() {
   );
 
   /**
-   * Handle shape drag end
+   * Handle shape drag start - mark shape as being dragged
+   */
+  const handleShapeDragStart = useCallback(
+    async (shapeId: string) => {
+      if (!currentUser) return;
+      
+      try {
+        // Mark shape as being dragged by current user
+        await updateShape(shapeId, {
+          isDragging: true,
+          draggingBy: currentUser.uid,
+          draggingByName: currentUser.displayName || 'Unknown User',
+        });
+      } catch (error) {
+        console.error('Failed to mark shape as dragging:', error);
+      }
+    },
+    [currentUser, updateShape]
+  );
+
+  /**
+   * Handle shape drag move - update position in real-time using RTDB
+   * No throttling for sub-100ms latency
+   */
+  const handleShapeDragMove = useCallback(
+    (shapeId: string, x: number, y: number) => {
+      if (!currentUser) return;
+      
+      updateDragPosition(
+        'global-canvas-v1',
+        shapeId,
+        x,
+        y,
+        currentUser.uid,
+        currentUser.displayName || 'Unknown User'
+      ).catch(console.error);
+    },
+    [currentUser]
+  );
+
+  /**
+   * Handle shape drag end - save final position to Firestore and clear RTDB
    */
   const handleShapeDragEnd = useCallback(
-    (shapeId: string, x: number, y: number) => {
-      updateShape(shapeId, { x, y });
+    async (shapeId: string, x: number, y: number) => {
+      if (!currentUser) return;
+
+      try {
+        // Save final position to Firestore FIRST (prevents visual jump)
+        await updateShape(shapeId, {
+          x,
+          y,
+          isDragging: false,
+          draggingBy: null,
+          draggingByName: null,
+        });
+        
+        // Then clear real-time drag position from RTDB
+        await clearDragPosition('global-canvas-v1', shapeId);
+      } catch (error) {
+        console.error('Failed to update shape:', error);
+      }
     },
-    [updateShape]
+    [currentUser, updateShape]
   );
 
   /**
@@ -695,6 +754,18 @@ export function Canvas() {
     return { x, y, shape: textShape };
   }, [editingTextId, shapes, stageScale, stagePosition]);
 
+  // Show loading state while canvas initializes
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center bg-gray-100">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+          <p className="text-gray-600 font-medium">Loading canvas...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full">
       {/* Layers Panel */}
@@ -735,11 +806,11 @@ export function Canvas() {
             handleStageMouseDown(e);
             handleMouseDown(e);
           }}
-          onMouseMove={(e) => {
+          onMouseMove={() => {
             handleStageMouseMove();
             handleMouseMove();
           }}
-          onMouseUp={(e) => {
+          onMouseUp={() => {
             handleStageMouseUp();
             handleMouseUp();
           }}
@@ -775,9 +846,12 @@ export function Canvas() {
                 shape={shape}
                 isSelected={shape.id === selectedId}
                 onSelect={() => selectShape(shape.id)}
+                onDragStart={() => handleShapeDragStart(shape.id)}
+                onDragMove={(x, y) => handleShapeDragMove(shape.id, x, y)}
                 onDragEnd={(x, y) => handleShapeDragEnd(shape.id, x, y)}
                 onTransformEnd={(updates) => handleShapeTransformEnd(shape.id, updates)}
                 isDraggable={selectedTool === 'select'}
+                currentUserId={currentUser?.uid}
                 onDoubleClick={shape.type === 'text' ? () => handleTextDoubleClick(shape) : undefined}
               />
             ))}
