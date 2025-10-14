@@ -58,6 +58,14 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
     circle: 0,
     text: 0,
   });
+  
+  // Store current user ID in a ref for cleanup (persists even after currentUser becomes null)
+  const currentUserIdRef = useRef<string | null>(null);
+  
+  // Update the ref whenever currentUser changes
+  useEffect(() => {
+    currentUserIdRef.current = currentUser?.uid || null;
+  }, [currentUser]);
 
   // ============================================================================
   // Initialize Canvas and Subscribe to Real-Time Updates
@@ -127,9 +135,11 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       if (unsubscribeDrag) {
         unsubscribeDrag();
       }
-      if (currentUser) {
-        cleanupUserLocks(currentUser.uid).catch(console.error);
-        setUserOffline(currentUser.uid).catch(console.error);
+      // Use the ref to get userId for cleanup, even if currentUser is already null
+      const userId = currentUserIdRef.current;
+      if (userId) {
+        cleanupUserLocks(userId).catch(console.error);
+        setUserOffline(userId).catch(console.error);
       }
     };
   }, [currentUser]);

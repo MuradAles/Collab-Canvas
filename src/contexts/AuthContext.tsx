@@ -18,6 +18,8 @@ import type { User as FirebaseUser } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import type { User, AuthContextType } from '../types';
 import { getDisplayNameFromEmail, truncateDisplayName } from '../utils/helpers';
+import { setUserOffline } from '../services/presence';
+import { cleanupUserLocks } from '../services/canvas';
 
 // ============================================================================
 // Context Creation
@@ -122,6 +124,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
    */
   const logout = async (): Promise<void> => {
     try {
+      // Clean up user presence and locks BEFORE signing out
+      if (currentUser) {
+        await Promise.all([
+          setUserOffline(currentUser.uid),
+          cleanupUserLocks(currentUser.uid)
+        ]);
+      }
+      
+      // Now sign out from Firebase
       await signOut(auth);
       setCurrentUser(null);
     } catch (error: any) {
