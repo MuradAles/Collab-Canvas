@@ -26,13 +26,13 @@ interface ShapeProps {
   onDragMove?: (x: number, y: number) => void;
   onDragEnd: (x: number, y: number) => void;
   onTransformEnd: (updates: { x?: number; y?: number; width?: number; height?: number; radius?: number; fontSize?: number; rotation?: number }) => void;
-  onRotation?: (x: number, y: number, rotation: number) => void;
+  onTransform?: (x: number, y: number, rotation: number, width?: number, height?: number, radius?: number, fontSize?: number) => void;
   isDraggable: boolean;
   currentUserId?: string;
   onDoubleClick?: () => void;
 }
 
-function ShapeComponent({ shape, isSelected, onSelect, onDragStart, onDragMove, onDragEnd, onTransformEnd, onRotation, isDraggable, currentUserId, onDoubleClick }: ShapeProps) {
+function ShapeComponent({ shape, isSelected, onSelect, onDragStart, onDragMove, onDragEnd, onTransformEnd, onTransform, isDraggable, currentUserId, onDoubleClick }: ShapeProps) {
   const shapeRef = useRef<Konva.Rect | Konva.Circle | Konva.Text | null>(null);
   const transformerRef = useRef<Konva.Transformer | null>(null);
   const [isLocalDragging, setIsLocalDragging] = useState(false);
@@ -135,17 +135,37 @@ function ShapeComponent({ shape, isSelected, onSelect, onDragStart, onDragMove, 
   const handleTransform = useCallback(
     () => {
       const node = shapeRef.current;
-      if (!node || !onRotation) return;
+      if (!node || !onTransform) return;
 
+      const x = node.x();
+      const y = node.y();
       const rotation = node.rotation();
+      const scaleX = node.scaleX();
+      const scaleY = node.scaleY();
       
-      // Send rotation updates for any change (very responsive for real-time updates)
-      // Use a very small threshold to avoid excessive updates but still be smooth
-      if (Math.abs(rotation - (shape.rotation || 0)) > 0.1) {
-        onRotation(node.x(), node.y(), rotation);
+      // Calculate current dimensions based on scale
+      let width: number | undefined;
+      let height: number | undefined;
+      let radius: number | undefined;
+      let fontSize: number | undefined;
+      
+      if (shape.type === 'rectangle') {
+        width = node.width() * scaleX;
+        height = node.height() * scaleY;
+      } else if (shape.type === 'circle') {
+        const circleNode = node as Konva.Circle;
+        radius = circleNode.radius() * scaleX;
+      } else if (shape.type === 'text') {
+        width = node.width() * scaleX;
+        const scale = (scaleX + scaleY) / 2;
+        const currentFontSize = shape.type === 'text' ? shape.fontSize : 16;
+        fontSize = currentFontSize * scale;
       }
+      
+      // Send all transformation data for real-time updates
+      onTransform(x, y, rotation, width, height, radius, fontSize);
     },
-    [shape.rotation, onRotation]
+    [shape, onTransform]
   );
 
   const handleDragStart = useCallback(() => {

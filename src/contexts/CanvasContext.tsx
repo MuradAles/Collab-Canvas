@@ -305,7 +305,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
   const shapesWithDragPositions = shapes.map(shape => {
     const dragPos = dragPositions.get(shape.id);
     if (dragPos && dragPos.draggingBy !== currentUser?.uid) {
-      // Apply real-time position and rotation from RTDB if being dragged/rotated by another user
+      // Apply real-time position, rotation, and dimensions from RTDB if being transformed by another user
       const updates: any = {
         ...shape,
         x: dragPos.x,
@@ -318,6 +318,27 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       // Include rotation if it's being updated
       if (dragPos.rotation !== undefined) {
         updates.rotation = dragPos.rotation;
+      }
+      
+      // Include dimensions if they're being updated (for resize operations)
+      if (shape.type === 'rectangle') {
+        if (dragPos.width !== undefined) {
+          updates.width = dragPos.width;
+        }
+        if (dragPos.height !== undefined) {
+          updates.height = dragPos.height;
+        }
+      } else if (shape.type === 'circle') {
+        if (dragPos.radius !== undefined) {
+          updates.radius = dragPos.radius;
+        }
+      } else if (shape.type === 'text') {
+        if (dragPos.width !== undefined) {
+          updates.width = dragPos.width;
+        }
+        if (dragPos.fontSize !== undefined) {
+          updates.fontSize = dragPos.fontSize;
+        }
       }
       
       return updates;

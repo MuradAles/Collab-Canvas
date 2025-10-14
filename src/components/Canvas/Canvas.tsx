@@ -605,14 +605,14 @@ export function Canvas() {
   );
 
   /**
-   * Handle shape rotation - update rotation in real-time using RTDB
-   * Also update cursor position during rotation
+   * Handle shape transformation - update position, rotation, and dimensions in real-time using RTDB
+   * Also update cursor position during transformation
    */
-  const handleShapeRotation = useCallback(
-    (shapeId: string, x: number, y: number, rotation: number) => {
+  const handleShapeTransform = useCallback(
+    (shapeId: string, x: number, y: number, rotation: number, width?: number, height?: number, radius?: number, fontSize?: number) => {
       if (!currentUser) return;
       
-      // Update shape position and rotation in RTDB
+      // Update shape transformation in RTDB (position, rotation, dimensions)
       updateDragPosition(
         'global-canvas-v1',
         shapeId,
@@ -620,10 +620,14 @@ export function Canvas() {
         y,
         currentUser.uid,
         currentUser.displayName || 'Unknown User',
-        rotation
+        rotation,
+        width,
+        height,
+        radius,
+        fontSize
       ).catch(console.error);
 
-      // ALSO update cursor position during rotation
+      // ALSO update cursor position during transformation
       // Get current mouse position from stage
       const stage = stageRef.current;
       if (stage) {
@@ -1003,7 +1007,7 @@ export function Canvas() {
                   onDragMove={(x, y) => handleShapeDragMove(shape.id, x, y)}
                   onDragEnd={(x, y) => handleShapeDragEnd(shape.id, x, y)}
                   onTransformEnd={(updates) => handleShapeTransformEnd(shape.id, updates)}
-                  onRotation={(x, y, rotation) => handleShapeRotation(shape.id, x, y, rotation)}
+                  onTransform={(x, y, rotation, width, height, radius, fontSize) => handleShapeTransform(shape.id, x, y, rotation, width, height, radius, fontSize)}
                   isDraggable={selectedTool === 'select'}
                   currentUserId={currentUser?.uid}
                   onDoubleClick={shape.type === 'text' ? () => handleTextDoubleClick(shape) : undefined}
@@ -1021,7 +1025,7 @@ export function Canvas() {
                 onDragMove={(x, y) => handleShapeDragMove(selectedId, x, y)}
                 onDragEnd={(x, y) => handleShapeDragEnd(selectedId, x, y)}
                 onTransformEnd={(updates) => handleShapeTransformEnd(selectedId, updates)}
-                onRotation={(x, y, rotation) => handleShapeRotation(selectedId, x, y, rotation)}
+                onTransform={(x, y, rotation, width, height, radius, fontSize) => handleShapeTransform(selectedId, x, y, rotation, width, height, radius, fontSize)}
                 isDraggable={selectedTool === 'select'}
                 currentUserId={currentUser?.uid}
                 onDoubleClick={shapes.find(s => s.id === selectedId)?.type === 'text' ? () => handleTextDoubleClick(shapes.find(s => s.id === selectedId) as TextShape) : undefined}
