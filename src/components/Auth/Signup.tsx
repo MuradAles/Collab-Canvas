@@ -3,7 +3,7 @@
  * Handles user registration with email/password
  */
 
-import { useState, FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 
 interface SignupProps {

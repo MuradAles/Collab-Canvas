@@ -16,7 +16,6 @@ import {
   onSnapshot,
   serverTimestamp,
   updateDoc,
-  Timestamp,
 } from 'firebase/firestore';
 import type { Unsubscribe } from 'firebase/firestore';
 import { onDisconnect, ref, set, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
@@ -40,7 +39,7 @@ interface ShapeSubscriptionCallback {
 }
 
 interface LockTimeoutMap {
-  [shapeId: string]: NodeJS.Timeout;
+  [shapeId: string]: number;
 }
 
 // ============================================================================

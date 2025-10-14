@@ -4,6 +4,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
+import type { JSX } from 'react';
 
 export type ShapeTool = 'rectangle' | 'circle';
 

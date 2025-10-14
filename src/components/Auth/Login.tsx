@@ -3,8 +3,9 @@
  * Handles user login with email/password and Google sign-in
  */
 
-import { useState, FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { Signup } from './Signup';
 
 export function Login() {
   const { login, loginWithGoogle } = useAuth();
@@ -42,8 +43,6 @@ export function Login() {
   };
 
   if (showSignup) {
-    // Dynamically import Signup to avoid circular dependencies
-    const Signup = require('./Signup').Signup;
     return <Signup onBackToLogin={() => setShowSignup(false)} />;
   }
 
