@@ -27,12 +27,14 @@ import {
 } from '../../utils/constants';
 import { screenToCanvas, normalizeRectangle } from '../../utils/helpers';
 import { updateDragPosition, clearDragPosition } from '../../services/dragSync';
+import { updateCursorPosition } from '../../services/presence';
 import { CanvasControls } from './CanvasControls';
 import { GridToggle } from './GridToggle';
 import { ToolSelector, type Tool } from './ToolSelector';
 import { Shape } from './Shape';
 import { PropertiesPanel } from './PropertiesPanel';
 import { LayersPanel } from './LayersPanel';
+import { Cursor } from '../Collaboration/Cursor';
 import type { RectangleShape, CircleShape, TextShape, ShapeUpdate } from '../../types';
 
 interface NewShapePreview {
@@ -65,7 +67,7 @@ export function Canvas() {
   const [textAreaValue, setTextAreaValue] = useState('');
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const { shapes, selectedId, selectShape, addShape, updateShape, deleteShape, reorderShapes, loading } = useCanvasContext();
+  const { shapes, selectedId, selectShape, addShape, updateShape, deleteShape, reorderShapes, loading, onlineUsers } = useCanvasContext();
   const { currentUser } = useAuth();
 
   const selectedShape = shapes.find(s => s.id === selectedId) || null;
@@ -139,6 +141,33 @@ export function Canvas() {
       setIsInitialPositionSet(true);
     }
   }, [stageSize, stageScale, isInitialPositionSet]);
+
+  /**
+   * Track mouse movements and update cursor position
+   * NO THROTTLING - sends every update for insane speed like dragSync
+   */
+  const handleCursorTracking = useCallback(
+    () => {
+      const stage = stageRef.current;
+      if (!stage || !currentUser) return;
+
+      const pointer = stage.getPointerPosition();
+      if (!pointer) return;
+
+      // Convert screen coordinates to canvas-relative coordinates
+      const canvasPos = screenToCanvas(
+        pointer.x,
+        pointer.y,
+        stagePosition.x,
+        stagePosition.y,
+        stageScale
+      );
+
+      // Update cursor position in RTDB (no throttling - fire and forget)
+      updateCursorPosition(currentUser.uid, canvasPos.x, canvasPos.y);
+    },
+    [currentUser, stagePosition, stageScale]
+  );
 
   /**
    * Handle zoom with mousewheel
@@ -413,6 +442,7 @@ export function Canvas() {
 
   /**
    * Handle shape drag start - mark shape as being dragged
+   * Also update cursor position at drag start
    */
   const handleShapeDragStart = useCallback(
     async (shapeId: string) => {
@@ -425,21 +455,39 @@ export function Canvas() {
           draggingBy: currentUser.uid,
           draggingByName: currentUser.displayName || 'Unknown User',
         });
+
+        // Update cursor position at drag start
+        const stage = stageRef.current;
+        if (stage) {
+          const pointer = stage.getPointerPosition();
+          if (pointer) {
+            const canvasPos = screenToCanvas(
+              pointer.x,
+              pointer.y,
+              stagePosition.x,
+              stagePosition.y,
+              stageScale
+            );
+            updateCursorPosition(currentUser.uid, canvasPos.x, canvasPos.y);
+          }
+        }
       } catch (error) {
         console.error('Failed to mark shape as dragging:', error);
       }
     },
-    [currentUser, updateShape]
+    [currentUser, updateShape, stagePosition, stageScale]
   );
 
   /**
    * Handle shape drag move - update position in real-time using RTDB
    * No throttling for sub-100ms latency
+   * ALSO update cursor position during drag for smooth tracking
    */
   const handleShapeDragMove = useCallback(
     (shapeId: string, x: number, y: number) => {
       if (!currentUser) return;
       
+      // Update shape position in RTDB
       updateDragPosition(
         'global-canvas-v1',
         shapeId,
@@ -448,12 +496,30 @@ export function Canvas() {
         currentUser.uid,
         currentUser.displayName || 'Unknown User'
       ).catch(console.error);
+
+      // ALSO update cursor position during drag
+      // Get current mouse position from stage
+      const stage = stageRef.current;
+      if (stage) {
+        const pointer = stage.getPointerPosition();
+        if (pointer) {
+          const canvasPos = screenToCanvas(
+            pointer.x,
+            pointer.y,
+            stagePosition.x,
+            stagePosition.y,
+            stageScale
+          );
+          updateCursorPosition(currentUser.uid, canvasPos.x, canvasPos.y);
+        }
+      }
     },
-    [currentUser]
+    [currentUser, stagePosition, stageScale]
   );
 
   /**
    * Handle shape drag end - save final position to Firestore and clear RTDB
+   * Also update cursor position at drag end
    */
   const handleShapeDragEnd = useCallback(
     async (shapeId: string, x: number, y: number) => {
@@ -471,21 +537,56 @@ export function Canvas() {
         
         // Then clear real-time drag position from RTDB
         await clearDragPosition('global-canvas-v1', shapeId);
+
+        // Update cursor position at drag end
+        const stage = stageRef.current;
+        if (stage) {
+          const pointer = stage.getPointerPosition();
+          if (pointer) {
+            const canvasPos = screenToCanvas(
+              pointer.x,
+              pointer.y,
+              stagePosition.x,
+              stagePosition.y,
+              stageScale
+            );
+            updateCursorPosition(currentUser.uid, canvasPos.x, canvasPos.y);
+          }
+        }
       } catch (error) {
         console.error('Failed to update shape:', error);
       }
     },
-    [currentUser, updateShape]
+    [currentUser, updateShape, stagePosition, stageScale]
   );
 
   /**
    * Handle shape transform end (resize)
+   * Also update cursor position after transform
    */
   const handleShapeTransformEnd = useCallback(
     (shapeId: string, updates: { x?: number; y?: number; width?: number; height?: number; radius?: number; fontSize?: number }) => {
       updateShape(shapeId, updates);
+
+      // Update cursor position after transform
+      if (currentUser) {
+        const stage = stageRef.current;
+        if (stage) {
+          const pointer = stage.getPointerPosition();
+          if (pointer) {
+            const canvasPos = screenToCanvas(
+              pointer.x,
+              pointer.y,
+              stagePosition.x,
+              stagePosition.y,
+              stageScale
+            );
+            updateCursorPosition(currentUser.uid, canvasPos.x, canvasPos.y);
+          }
+        }
+      }
     },
-    [updateShape]
+    [updateShape, currentUser, stagePosition, stageScale]
   );
 
   /**
@@ -809,6 +910,7 @@ export function Canvas() {
           onMouseMove={() => {
             handleStageMouseMove();
             handleMouseMove();
+            handleCursorTracking();
           }}
           onMouseUp={() => {
             handleStageMouseUp();
@@ -888,6 +990,17 @@ export function Canvas() {
                 )}
               </>
             )}
+
+            {/* Multiplayer Cursors - rendered within canvas */}
+            {onlineUsers
+              .filter((user) => user.uid !== currentUser?.uid && user.isOnline)
+              .map((user) => (
+                <Cursor
+                  key={user.uid}
+                  user={user}
+                  scale={stageScale}
+                />
+              ))}
           </Layer>
         </Stage>
 

@@ -29,6 +29,8 @@ export interface PresenceData {
   uid: string;
   displayName: string;
   color: string;
+  cursorX: number; // Canvas-relative coordinates
+  cursorY: number; // Canvas-relative coordinates
   lastSeen: number | object;
   isOnline: boolean;
 }
@@ -83,6 +85,8 @@ export async function setUserOnline(
       uid: userId,
       displayName,
       color,
+      cursorX: 0,
+      cursorY: 0,
       lastSeen: serverTimestamp() as object,
       isOnline: true,
     };
@@ -112,6 +116,36 @@ export async function setUserOffline(userId: string): Promise<void> {
   } catch (error) {
     console.error('Failed to set user offline:', error);
   }
+}
+
+/**
+ * Update cursor position for a user
+ * Uses canvas-relative coordinates (not screen coordinates)
+ * NO THROTTLING - sends every update for ultra-smooth movement
+ * Same approach as dragSync for insane speed
+ */
+export function updateCursorPosition(
+  userId: string,
+  cursorX: number,
+  cursorY: number
+): void {
+  const cursorXRef = ref(rtdb, `sessions/${GLOBAL_CANVAS_ID}/${userId}/cursorX`);
+  const cursorYRef = ref(rtdb, `sessions/${GLOBAL_CANVAS_ID}/${userId}/cursorY`);
+  const lastSeenRef = ref(rtdb, `sessions/${GLOBAL_CANVAS_ID}/${userId}/lastSeen`);
+  
+  // Fire-and-forget for maximum speed - don't await
+  // Update only cursor position fields (preserve other fields like displayName, color, isOnline)
+  // Use Date.now() instead of serverTimestamp for speed
+  Promise.all([
+    set(cursorXRef, cursorX),
+    set(cursorYRef, cursorY),
+    set(lastSeenRef, Date.now()),
+  ]).catch((error) => {
+    // Silently fail to avoid spamming console during rapid cursor movements
+    if (import.meta.env.DEV) {
+      console.warn('Failed to update cursor position:', error);
+    }
+  });
 }
 
 /**

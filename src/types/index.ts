@@ -150,6 +150,8 @@ export interface OnlineUser {
   uid: string;
   displayName: string;
   color: string;
+  cursorX: number;
+  cursorY: number;
   lastSeen: number | object;
   isOnline: boolean;
 }
