@@ -10,6 +10,7 @@ import { rtdb } from './firebase';
 export interface DragPosition {
   x: number;
   y: number;
+  rotation?: number;
   draggingBy: string;
   draggingByName: string;
   timestamp: number;
@@ -25,18 +26,25 @@ export async function updateDragPosition(
   x: number,
   y: number,
   userId: string,
-  userName: string
+  userName: string,
+  rotation?: number
 ): Promise<void> {
   const dragRef = ref(rtdb, `drag/${canvasId}/${shapeId}`);
   
   try {
-    await set(dragRef, {
+    const data: DragPosition = {
       x,
       y,
       draggingBy: userId,
       draggingByName: userName,
       timestamp: Date.now(),
-    });
+    };
+    
+    if (rotation !== undefined) {
+      data.rotation = rotation;
+    }
+    
+    await set(dragRef, data);
   } catch (error) {
     console.error('Failed to update drag position:', error);
     throw error;

@@ -305,8 +305,8 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
   const shapesWithDragPositions = shapes.map(shape => {
     const dragPos = dragPositions.get(shape.id);
     if (dragPos && dragPos.draggingBy !== currentUser?.uid) {
-      // Apply real-time position from RTDB if being dragged by another user
-      return {
+      // Apply real-time position and rotation from RTDB if being dragged/rotated by another user
+      const updates: any = {
         ...shape,
         x: dragPos.x,
         y: dragPos.y,
@@ -314,6 +314,13 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
         draggingBy: dragPos.draggingBy,
         draggingByName: dragPos.draggingByName,
       };
+      
+      // Include rotation if it's being updated
+      if (dragPos.rotation !== undefined) {
+        updates.rotation = dragPos.rotation;
+      }
+      
+      return updates;
     }
     return shape;
   });

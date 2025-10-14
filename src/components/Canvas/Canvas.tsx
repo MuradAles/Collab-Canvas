@@ -18,7 +18,6 @@ import {
   DEFAULT_SHAPE_FILL,
   DEFAULT_SHAPE_STROKE,
   DEFAULT_SHAPE_STROKE_WIDTH,
-  DEFAULT_STROKE_POSITION,
   DEFAULT_CORNER_RADIUS,
   MIN_SHAPE_SIZE,
   DEFAULT_TEXT_SIZE,
@@ -311,6 +310,7 @@ export function Canvas() {
             type: 'text',
             x: canvasPos.x,
             y: canvasPos.y,
+            rotation: 0,
             text: '',
             fontSize: DEFAULT_TEXT_SIZE,
             fontFamily: DEFAULT_TEXT_FONT,
@@ -398,10 +398,10 @@ export function Canvas() {
           y: newShapePreview.y,
           width: newShapePreview.width,
           height: newShapePreview.height,
+          rotation: 0,
           fill: DEFAULT_SHAPE_FILL,
           stroke: DEFAULT_SHAPE_STROKE,
           strokeWidth: DEFAULT_SHAPE_STROKE_WIDTH,
-          strokePosition: DEFAULT_STROKE_POSITION,
           cornerRadius: DEFAULT_CORNER_RADIUS,
         };
         await addShape(rectShape);
@@ -413,10 +413,10 @@ export function Canvas() {
           x: newShapePreview.x + newShapePreview.width / 2,
           y: newShapePreview.y + newShapePreview.height / 2,
           radius: radius,
+          rotation: 0,
           fill: DEFAULT_SHAPE_FILL,
           stroke: DEFAULT_SHAPE_STROKE,
           strokeWidth: DEFAULT_SHAPE_STROKE_WIDTH,
-          strokePosition: DEFAULT_STROKE_POSITION,
         };
         await addShape(circleShape);
       }
@@ -561,11 +561,11 @@ export function Canvas() {
   );
 
   /**
-   * Handle shape transform end (resize)
+   * Handle shape transform end (resize/rotation)
    * Also update cursor position after transform
    */
   const handleShapeTransformEnd = useCallback(
-    (shapeId: string, updates: { x?: number; y?: number; width?: number; height?: number; radius?: number; fontSize?: number }) => {
+    (shapeId: string, updates: { x?: number; y?: number; width?: number; height?: number; radius?: number; fontSize?: number; rotation?: number }) => {
       updateShape(shapeId, updates);
 
       // Update cursor position after transform
@@ -587,6 +587,45 @@ export function Canvas() {
       }
     },
     [updateShape, currentUser, stagePosition, stageScale]
+  );
+
+  /**
+   * Handle shape rotation - update rotation in real-time using RTDB
+   * Also update cursor position during rotation
+   */
+  const handleShapeRotation = useCallback(
+    (shapeId: string, x: number, y: number, rotation: number) => {
+      if (!currentUser) return;
+      
+      // Update shape position and rotation in RTDB
+      updateDragPosition(
+        'global-canvas-v1',
+        shapeId,
+        x,
+        y,
+        currentUser.uid,
+        currentUser.displayName || 'Unknown User',
+        rotation
+      ).catch(console.error);
+
+      // ALSO update cursor position during rotation
+      // Get current mouse position from stage
+      const stage = stageRef.current;
+      if (stage) {
+        const pointer = stage.getPointerPosition();
+        if (pointer) {
+          const canvasPos = screenToCanvas(
+            pointer.x,
+            pointer.y,
+            stagePosition.x,
+            stagePosition.y,
+            stageScale
+          );
+          updateCursorPosition(currentUser.uid, canvasPos.x, canvasPos.y);
+        }
+      }
+    },
+    [currentUser, stagePosition, stageScale]
   );
 
   /**
@@ -941,22 +980,43 @@ export function Canvas() {
             {/* Grid lines */}
             {renderGrid()}
 
-            {/* Render all shapes */}
-            {shapes.map((shape) => (
+            {/* Render non-selected shapes first */}
+            {shapes
+              .filter(shape => shape.id !== selectedId)
+              .map((shape) => (
+                <Shape
+                  key={shape.id}
+                  shape={shape}
+                  isSelected={false}
+                  onSelect={() => selectShape(shape.id)}
+                  onDragStart={() => handleShapeDragStart(shape.id)}
+                  onDragMove={(x, y) => handleShapeDragMove(shape.id, x, y)}
+                  onDragEnd={(x, y) => handleShapeDragEnd(shape.id, x, y)}
+                  onTransformEnd={(updates) => handleShapeTransformEnd(shape.id, updates)}
+                  onRotation={(x, y, rotation) => handleShapeRotation(shape.id, x, y, rotation)}
+                  isDraggable={selectedTool === 'select'}
+                  currentUserId={currentUser?.uid}
+                  onDoubleClick={shape.type === 'text' ? () => handleTextDoubleClick(shape) : undefined}
+                />
+              ))}
+
+            {/* Render selected shape last (on top) */}
+            {selectedId && shapes.find(s => s.id === selectedId) && (
               <Shape
-                key={shape.id}
-                shape={shape}
-                isSelected={shape.id === selectedId}
-                onSelect={() => selectShape(shape.id)}
-                onDragStart={() => handleShapeDragStart(shape.id)}
-                onDragMove={(x, y) => handleShapeDragMove(shape.id, x, y)}
-                onDragEnd={(x, y) => handleShapeDragEnd(shape.id, x, y)}
-                onTransformEnd={(updates) => handleShapeTransformEnd(shape.id, updates)}
+                key={selectedId}
+                shape={shapes.find(s => s.id === selectedId)!}
+                isSelected={true}
+                onSelect={() => selectShape(selectedId)}
+                onDragStart={() => handleShapeDragStart(selectedId)}
+                onDragMove={(x, y) => handleShapeDragMove(selectedId, x, y)}
+                onDragEnd={(x, y) => handleShapeDragEnd(selectedId, x, y)}
+                onTransformEnd={(updates) => handleShapeTransformEnd(selectedId, updates)}
+                onRotation={(x, y, rotation) => handleShapeRotation(selectedId, x, y, rotation)}
                 isDraggable={selectedTool === 'select'}
                 currentUserId={currentUser?.uid}
-                onDoubleClick={shape.type === 'text' ? () => handleTextDoubleClick(shape) : undefined}
+                onDoubleClick={shapes.find(s => s.id === selectedId)?.type === 'text' ? () => handleTextDoubleClick(shapes.find(s => s.id === selectedId) as TextShape) : undefined}
               />
-            ))}
+            )}
 
             {/* Shape preview while drawing */}
             {isDrawing && newShapePreview && newShapePreview.width > 0 && newShapePreview.height > 0 && (

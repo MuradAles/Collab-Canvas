@@ -8,7 +8,6 @@
 // ============================================================================
 
 export type ShapeType = 'rectangle' | 'circle' | 'text';
-export type StrokePosition = 'inside' | 'center' | 'outside';
 
 export interface BaseShape {
   id: string;
@@ -16,6 +15,7 @@ export interface BaseShape {
   name: string;
   x: number;
   y: number;
+  rotation: number;
   isLocked: boolean;
   lockedBy: string | null;
   lockedByName: string | null;
@@ -31,7 +31,6 @@ export interface RectangleShape extends BaseShape {
   fill: string;
   stroke: string;
   strokeWidth: number;
-  strokePosition: StrokePosition;
   cornerRadius: number;
 }
 
@@ -41,7 +40,6 @@ export interface CircleShape extends BaseShape {
   fill: string;
   stroke: string;
   strokeWidth: number;
-  strokePosition: StrokePosition;
 }
 
 export interface TextShape extends BaseShape {
@@ -61,10 +59,10 @@ export interface ShapeUpdate {
   width?: number;
   height?: number;
   radius?: number;
+  rotation?: number;
   fill?: string;
   stroke?: string;
   strokeWidth?: number;
-  strokePosition?: StrokePosition;
   cornerRadius?: number;
   text?: string;
   fontSize?: number;

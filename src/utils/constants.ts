@@ -30,7 +30,6 @@ export const DEFAULT_ZOOM = 1;
 export const DEFAULT_SHAPE_FILL = '#e0e0e0';
 export const DEFAULT_SHAPE_STROKE = '#000000';
 export const DEFAULT_SHAPE_STROKE_WIDTH = 2;
-export const DEFAULT_STROKE_POSITION: 'inside' | 'center' | 'outside' = 'center';
 export const DEFAULT_SHAPE_WIDTH = 100;
 export const DEFAULT_SHAPE_HEIGHT = 100;
 export const DEFAULT_SHAPE_RADIUS = 50;

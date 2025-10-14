@@ -615,13 +615,13 @@ collabcanvas/
 - [ ] User B sees clear visual feedback showing shape is locked
 - [ ] Lock releases automatically when User A stops dragging
 - [ ] Lock releases after timeout (5 seconds) if User A disconnects mid-drag
-- [ ] Moving shape in one browser updates in other (<100ms)
-- [ ] Deleting shape in one removes from other
+- [X] Moving shape in one browser updates in other (<100ms)
+- [X] Deleting shape in one removes from other
 - [ ] Cannot delete shapes locked by other users
-- [ ] Page refresh loads all existing shapes
-- [ ] All users leave and return: shapes still there
-- [ ] No duplicate shapes or sync issues
-- [ ] All tests pass (`npm test`)
+- [X] Page refresh loads all existing shapes
+- [X] All users leave and return: shapes still there
+- [X] No duplicate shapes or sync issues
+- [X] All tests pass (`npm test`)
 
 ---
 

@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useState, useEffect, memo } from 'react';
-import type { Shape, RectangleShape, CircleShape, TextShape, StrokePosition } from '../../types';
+import type { Shape, RectangleShape, CircleShape, TextShape } from '../../types';
 
 interface PropertiesPanelProps {
   selectedShape: Shape | null;
@@ -265,29 +265,6 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
               </div>
             )}
 
-            {/* Stroke Position */}
-            {hasStroke && (
-              <div>
-                <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Stroke Position</div>
-                <div className="grid grid-cols-3 gap-1">
-                  {(['inside', 'center', 'outside'] as StrokePosition[]).map((position) => (
-                    <button
-                      key={position}
-                      onClick={() => onUpdate({ strokePosition: position })}
-                      className={`
-                        px-2 py-1.5 text-xs rounded border transition-colors capitalize
-                        ${(selectedShape as RectangleShape).strokePosition === position
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                        }
-                      `}
-                    >
-                      {position}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </>
         )}
 
@@ -402,29 +379,6 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
               </div>
             )}
 
-            {/* Stroke Position */}
-            {hasStroke && (
-              <div>
-                <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Stroke Position</div>
-                <div className="grid grid-cols-3 gap-1">
-                  {(['inside', 'center', 'outside'] as StrokePosition[]).map((position) => (
-                    <button
-                      key={position}
-                      onClick={() => onUpdate({ strokePosition: position })}
-                      className={`
-                        px-2 py-1.5 text-xs rounded border transition-colors capitalize
-                        ${(selectedShape as CircleShape).strokePosition === position
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                        }
-                      `}
-                    >
-                      {position}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </>
         )}
 
