@@ -3,6 +3,7 @@
  * Renders grid lines on the canvas
  */
 
+import React from 'react';
 import { Line } from 'react-konva';
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from './constants';
 
@@ -21,10 +22,10 @@ export function renderGrid({
   gridSize = 50,
   gridColor = '#e0e0e0',
   thickLineColor = '#d0d0d0',
-}: RenderGridOptions): JSX.Element[] | null {
+}: RenderGridOptions): React.ReactElement[] | null {
   if (!showGrid) return null;
 
-  const lines: JSX.Element[] = [];
+  const lines: React.ReactElement[] = [];
 
   // Vertical lines
   for (let i = 0; i <= CANVAS_WIDTH; i += gridSize) {
