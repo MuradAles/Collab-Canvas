@@ -32,9 +32,9 @@ function AppContent() {
   // Show main app if authenticated
   return (
     <CanvasProvider>
-      <div className="h-screen flex flex-col">
+      <div className="h-screen w-screen flex flex-col overflow-hidden">
         <Navbar />
-        <main className="flex-1 bg-gray-50">
+        <main className="flex-1 bg-gray-50 overflow-hidden">
           <Canvas />
         </main>
       </div>

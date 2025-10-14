@@ -193,7 +193,7 @@ function LayersPanelComponent({ shapes, selectedId, onSelectShape, onReorderShap
       </div>
 
       {/* Layers List */}
-      <div className="flex-1 overflow-y-auto p-2">
+      <div className="flex-1 overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
         {reversedShapes.length === 0 ? (
           <div className="text-center text-gray-400 text-sm mt-8 px-4">
             <svg

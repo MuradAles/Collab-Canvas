@@ -46,7 +46,7 @@ export function Canvas() {
   const stageRef = useRef<Konva.Stage | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   
-  const [stageSize, setStageSize] = useState({ width: 1200, height: 800 });
+  const [stageSize, setStageSize] = useState({ width: window.innerWidth - 240 - 320, height: window.innerHeight - 64 });
   const [stageScale, setStageScale] = useState(DEFAULT_ZOOM);
   const [stagePosition, setStagePosition] = useState({ x: 0, y: 0 });
   const [isInitialPositionSet, setIsInitialPositionSet] = useState(false);
@@ -767,7 +767,7 @@ export function Canvas() {
   }
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full w-full">
       {/* Layers Panel */}
       <LayersPanel
         shapes={shapes}
@@ -779,7 +779,7 @@ export function Canvas() {
       {/* Main Canvas Area */}
       <div
         ref={containerRef}
-        className="flex-1 relative bg-gray-100 overflow-hidden"
+        className="flex-1 relative bg-gray-100 overflow-hidden min-w-0"
       >
         {/* Grid Toggle */}
         <GridToggle showGrid={showGrid} onToggle={handleToggleGrid} />
