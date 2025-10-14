@@ -34,8 +34,24 @@
 
 ## Recent Changes
 
-### Completed in PR #5: Real-Time Synchronization
+### Completed: UI/UX Improvements
 **Date**: Most recent
+**Impact**: Enhanced user experience and workflow efficiency
+
+**Key Achievements**:
+- ✅ Fixed delete key behavior (Delete key deletes, Backspace does nothing)
+- ✅ Improved text creation with default "Text" content and auto-selection
+- ✅ Added comprehensive tutorial with keyboard shortcuts
+- ✅ Better text editing workflow with immediate focus and selection
+
+**Technical Details**:
+- Updated keyboard event handler to only respond to Delete key
+- Enhanced text shape creation with default content
+- Created Tutorial component with modal interface
+- Improved text editing UX with auto-focus and text selection
+
+### Completed in PR #5: Real-Time Synchronization
+**Date**: Previous
 **Impact**: Major milestone - core collaboration functionality
 
 **Key Achievements**:

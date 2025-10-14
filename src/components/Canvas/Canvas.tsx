@@ -34,6 +34,7 @@ import { Shape } from './Shape';
 import { PropertiesPanel } from './PropertiesPanel';
 import { LayersPanel } from './LayersPanel';
 import { Cursor } from '../Collaboration/Cursor';
+import { Tutorial } from './Tutorial';
 import type { RectangleShape, CircleShape, TextShape, ShapeUpdate } from '../../types';
 
 interface NewShapePreview {
@@ -47,7 +48,12 @@ export function Canvas() {
   const stageRef = useRef<Konva.Stage | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   
-  const [stageSize, setStageSize] = useState({ width: window.innerWidth - 240 - 320, height: window.innerHeight - 64 });
+  // Calculate initial size based on viewport - leaving room for panels and navbar
+  // LayersPanel: 240px (w-60), PropertiesPanel: 256px (w-64), Navbar: 64px
+  const [stageSize, setStageSize] = useState({ 
+    width: Math.max(800, window.innerWidth - 240 - 256), 
+    height: Math.max(600, window.innerHeight - 64) 
+  });
   const [stageScale, setStageScale] = useState(DEFAULT_ZOOM);
   const [stagePosition, setStagePosition] = useState({ x: 0, y: 0 });
   const [isInitialPositionSet, setIsInitialPositionSet] = useState(false);
@@ -305,13 +311,13 @@ export function Canvas() {
             height: 0,
           });
         } else if (selectedTool === 'text') {
-          // Create text immediately at click position
+          // Create text immediately at click position with default "Text" content
           const textShape: Omit<TextShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'> = {
             type: 'text',
             x: canvasPos.x,
             y: canvasPos.y,
             rotation: 0,
-            text: '',
+            text: 'Text',
             fontSize: DEFAULT_TEXT_SIZE,
             fontFamily: DEFAULT_TEXT_FONT,
             fill: DEFAULT_TEXT_FILL,
@@ -326,10 +332,11 @@ export function Canvas() {
               const newShape = allShapes[allShapes.length];
               if (newShape) {
                 setEditingTextId(newShape.id);
-                setTextAreaValue('');
-                // Focus the textarea
+                setTextAreaValue('Text');
+                // Focus the textarea and select all text for easy replacement
                 requestAnimationFrame(() => {
                   textAreaRef.current?.focus();
+                  textAreaRef.current?.select();
                 });
               }
             }, 50);
@@ -339,7 +346,7 @@ export function Canvas() {
         }
       }
     },
-    [stagePosition, stageScale, selectedTool, addShape]
+    [stagePosition, stageScale, selectedTool, addShape, shapes]
   );
 
   /**
@@ -783,8 +790,8 @@ export function Canvas() {
         return;
       }
 
-      // Delete selected shape
-      if (e.key === 'Delete' || e.key === 'Backspace') {
+      // Delete selected shape (only Delete key, not Backspace)
+      if (e.key === 'Delete') {
         if (selectedId) {
           e.preventDefault();
           deleteShape(selectedId);
@@ -882,14 +889,9 @@ export function Canvas() {
     const textShape = shapes.find(s => s.id === editingTextId);
     if (!textShape || textShape.type !== 'text') return null;
     
-    const container = containerRef.current;
-    if (!container) return null;
-    
-    const rect = container.getBoundingClientRect();
-    
     // Convert canvas coordinates to screen coordinates relative to container
-    const x = textShape.x * stageScale + stagePosition.x + rect.left + 240; // 240px offset for layers panel
-    const y = textShape.y * stageScale + stagePosition.y + rect.top;
+    const x = textShape.x * stageScale + stagePosition.x;
+    const y = textShape.y * stageScale + stagePosition.y;
     
     return { x, y, shape: textShape };
   }, [editingTextId, shapes, stageScale, stagePosition]);
@@ -1120,6 +1122,9 @@ export function Canvas() {
         selectedShape={selectedShape}
         onUpdate={handlePropertyUpdate}
       />
+
+      {/* Tutorial Button */}
+      <Tutorial />
     </div>
   );
 }
