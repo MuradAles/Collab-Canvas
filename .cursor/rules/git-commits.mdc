@@ -1,0 +1,44 @@
+Description: Format for git commit messages
+Globs: **/*
+
+## Git Commit Message Format
+
+When generating git commit messages, use this specific format:
+
+### Structure:
+1. **Summary line** (first line) - Brief description of what was done
+2. **Blank line**
+3. **File-by-file breakdown** with format:
+   - `filename.ext` on its own line
+   - One or two sentence description of changes made to that file
+   - Blank line between files
+
+### Example:
+```
+Optimize real-time collaboration performance with RAF throttling and context splitting
+
+src/contexts/CanvasContext.tsx
+Added RAF throttling for incoming drag updates to limit re-renders to 60fps max. Removed presence/cursor logic and moved to separate context.
+
+src/components/Canvas/Canvas.tsx
+Removed onlineUsers from CanvasContext subscription. Uses CursorsLayer component for cursor rendering.
+
+src/types/index.ts
+Added localOnly parameter to updateShape signature for optimistic updates.
+```
+
+### Guidelines:
+- Summary should be concise but descriptive (50-72 chars ideal)
+- Each file description should be 1-2 sentences max
+- Focus on WHAT changed and WHY, not HOW
+- Use past tense ("Added", "Removed", "Fixed", "Optimized")
+- Group related changes together when listing files
+- Keep technical but clear - avoid jargon when simple words work
+
+### Don't Include:
+- Line numbers or code snippets
+- Excessive technical details
+- Implementation details unless critical to understanding
+- Multiple paragraphs per file
+
+When user asks for "git commit" or "commit message", generate in this exact format.
