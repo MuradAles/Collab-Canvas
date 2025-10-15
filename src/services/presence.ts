@@ -113,8 +113,11 @@ export async function setUserOffline(userId: string): Promise<void> {
   try {
     const userRef = ref(rtdb, `sessions/${GLOBAL_CANVAS_ID}/${userId}`);
     await set(userRef, null);
-  } catch (error) {
-    console.error('Failed to set user offline:', error);
+  } catch (error: any) {
+    // Silently ignore permission errors during logout
+    if (error?.code !== 'PERMISSION_DENIED') {
+      console.error('Failed to set user offline:', error);
+    }
   }
 }
 
@@ -174,7 +177,13 @@ export function subscribeToPresence(
   };
   
   // Listen to presence changes
-  onValue(sessionRef, handlePresenceUpdate, (error) => {
+  onValue(sessionRef, handlePresenceUpdate, (error: any) => {
+    // Silently ignore permission errors (happens during logout/when not authenticated)
+    if (error?.code === 'PERMISSION_DENIED' || error?.message?.includes('permission_denied')) {
+      // User logged out or not authenticated, clear online users
+      callback([]);
+      return;
+    }
     console.error('Error subscribing to presence:', error);
   });
   

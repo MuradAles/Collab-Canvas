@@ -126,10 +126,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       // Clean up user presence and locks BEFORE signing out
       if (currentUser) {
-        await Promise.all([
+        // Use Promise.allSettled to ensure we attempt all cleanups even if one fails
+        // This prevents one failed cleanup from blocking the others
+        await Promise.allSettled([
           setUserOffline(currentUser.uid),
           cleanupUserLocks(currentUser.uid)
         ]);
+        
+        // Give a small delay to ensure cleanup operations complete
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
       
       // Now sign out from Firebase
@@ -137,6 +142,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setCurrentUser(null);
     } catch (error: any) {
       console.error('Logout error:', error);
+      // Even if there's an error, try to sign out
+      try {
+        await signOut(auth);
+        setCurrentUser(null);
+      } catch {
+        // Ignore secondary errors
+      }
       throw new Error(error.message || 'Failed to log out');
     }
   };

@@ -135,7 +135,13 @@ export function subscribeToShapes(
       });
       callback(shapes);
     },
-    (error) => {
+    (error: any) => {
+      // Silently ignore permission errors (happens during logout)
+      if (error?.code === 'permission-denied') {
+        // User logged out, just return empty shapes
+        callback([]);
+        return;
+      }
       console.error('Error listening to shapes updates:', error);
       throw new Error('Failed to sync shapes data');
     }
@@ -380,8 +386,11 @@ export async function cleanupUserLocks(userId: string): Promise<void> {
     if (hasUpdates) {
       await batch.commit();
     }
-  } catch (error) {
-    console.error('Failed to cleanup user locks:', error);
+  } catch (error: any) {
+    // Silently ignore permission errors during logout
+    if (error?.code !== 'permission-denied') {
+      console.error('Failed to cleanup user locks:', error);
+    }
   }
 }
 

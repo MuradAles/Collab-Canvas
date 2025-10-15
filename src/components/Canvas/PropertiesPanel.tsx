@@ -15,6 +15,7 @@ interface PropertiesPanelProps {
 function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelProps) {
   const [hasFill, setHasFill] = useState(true);
   const [hasStroke, setHasStroke] = useState(true);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   
   // Local state for high-frequency inputs (colors, sliders)
   const [localFillColor, setLocalFillColor] = useState('');
@@ -119,9 +120,53 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
     onUpdate({ stroke: newColor }, false); // Sync immediately
   }, [onUpdate]);
 
+  // Collapsed state - show a thin tab
+  if (isCollapsed) {
+    return (
+      <div className="w-12 bg-white border-l border-gray-200 flex flex-col items-center py-4 transition-all duration-300">
+        <button
+          onClick={() => setIsCollapsed(false)}
+          className="p-2 hover:bg-gray-100 rounded transition-colors"
+          title="Expand properties panel"
+        >
+          <svg 
+            className="w-4 h-4 text-gray-600 rotate-180"
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <div className="text-xs text-gray-500 mt-4 [writing-mode:vertical-lr] rotate-180 uppercase tracking-wider">
+          Properties
+        </div>
+      </div>
+    );
+  }
+
   if (!selectedShape) {
     return (
-      <div className="w-64 bg-white border-l border-gray-200 p-4 overflow-y-auto">
+      <div className="w-64 bg-white border-l border-gray-200 p-4 overflow-y-auto transition-all duration-300">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
+            Properties
+          </h3>
+          <button
+            onClick={() => setIsCollapsed(true)}
+            className="p-1 hover:bg-gray-100 rounded transition-colors"
+            title="Collapse panel"
+          >
+            <svg 
+              className="w-4 h-4 text-gray-600"
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+        </div>
         <div className="text-center text-gray-500 text-sm mt-8">
           <svg
             className="w-12 h-12 mx-auto mb-3 text-gray-400"
@@ -143,10 +188,26 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
   }
 
   return (
-    <div className="w-64 bg-white border-l border-gray-200 p-4 overflow-y-auto">
-      <h3 className="text-sm font-semibold text-gray-900 mb-4 uppercase tracking-wide">
-        Properties
-      </h3>
+    <div className="w-64 bg-white border-l border-gray-200 p-4 overflow-y-auto transition-all duration-300">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
+          Properties
+        </h3>
+        <button
+          onClick={() => setIsCollapsed(true)}
+          className="p-1 hover:bg-gray-100 rounded transition-colors"
+          title="Collapse panel"
+        >
+          <svg 
+            className="w-4 h-4 text-gray-600"
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+      </div>
 
       <div className="space-y-4">
         {/* Shape Type */}
