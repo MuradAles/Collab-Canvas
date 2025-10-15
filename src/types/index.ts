@@ -159,7 +159,6 @@ export interface CanvasContextType {
   shapes: Shape[];
   selectedId: string | null;
   loading: boolean;
-  onlineUsers: OnlineUser[];
   addShape: (shape: Omit<Shape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>) => Promise<void>;
   updateShape: (id: string, updates: ShapeUpdate, localOnly?: boolean) => Promise<void>;
   deleteShape: (id: string) => Promise<void>;

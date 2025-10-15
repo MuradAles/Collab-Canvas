@@ -3,7 +3,7 @@
  * Manages shape drag and transform interactions
  */
 
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import type Konva from 'konva';
 import type { Shape } from '../types';
 import { updateDragPosition, clearDragPosition } from '../services/dragSync';
@@ -27,6 +27,19 @@ export function useShapeInteraction({
   currentUserName,
   updateShape,
 }: UseShapeInteractionProps) {
+  
+  // RAF throttling for drag updates to prevent FPS drops
+  const dragRafRef = useRef<number | null>(null);
+  const pendingDragUpdateRef = useRef<{
+    shapeId: string;
+    x: number;
+    y: number;
+    rotation?: number;
+    width?: number;
+    height?: number;
+    radius?: number;
+    fontSize?: number;
+  } | null>(null);
   
   /**
    * Update cursor position based on current mouse position
@@ -77,36 +90,73 @@ export function useShapeInteraction({
 
   /**
    * Handle shape drag move - update position in real-time using RTDB
-   * No throttling for sub-100ms latency
+   * Throttled with RAF for 60fps max to prevent FPS drops
    * ALSO update cursor position during drag for smooth tracking
    */
   const handleShapeDragMove = useCallback(
     (shapeId: string, x: number, y: number) => {
       if (!currentUserId) return;
       
-      // Update shape position in RTDB
-      updateDragPosition(
-        'global-canvas-v1',
-        shapeId,
-        x,
-        y,
-        currentUserId,
-        currentUserName || 'Unknown User'
-      ).catch(console.error);
-
-      // ALSO update cursor position during drag
-      updateCurrentCursorPosition();
+      // Cancel any pending RAF
+      if (dragRafRef.current !== null) {
+        cancelAnimationFrame(dragRafRef.current);
+      }
+      
+      // Store pending update
+      pendingDragUpdateRef.current = { shapeId, x, y };
+      
+      // Schedule update on next frame (max 60fps)
+      dragRafRef.current = requestAnimationFrame(() => {
+        const pending = pendingDragUpdateRef.current;
+        if (pending) {
+          // Update shape position in RTDB
+          updateDragPosition(
+            'global-canvas-v1',
+            pending.shapeId,
+            pending.x,
+            pending.y,
+            currentUserId,
+            currentUserName || 'Unknown User'
+          ).catch(console.error);
+          
+          // ALSO update cursor position during drag
+          updateCurrentCursorPosition();
+          
+          pendingDragUpdateRef.current = null;
+        }
+        dragRafRef.current = null;
+      });
     },
     [currentUserId, currentUserName, updateCurrentCursorPosition]
   );
 
   /**
    * Handle shape drag end - save final position to Firestore and clear RTDB
-   * Also update cursor position at drag end
+   * Also update cursor position at drag end and cancel any pending RAF
    */
   const handleShapeDragEnd = useCallback(
     async (shapeId: string, x: number, y: number) => {
       if (!currentUserId) return;
+
+      // Cancel any pending RAF and ensure last update is sent
+      if (dragRafRef.current !== null) {
+        cancelAnimationFrame(dragRafRef.current);
+        dragRafRef.current = null;
+      }
+      
+      // Send final position to RTDB before clearing
+      if (pendingDragUpdateRef.current) {
+        const pending = pendingDragUpdateRef.current;
+        await updateDragPosition(
+          'global-canvas-v1',
+          pending.shapeId,
+          pending.x,
+          pending.y,
+          currentUserId,
+          currentUserName || 'Unknown User'
+        ).catch(console.error);
+        pendingDragUpdateRef.current = null;
+      }
 
       try {
         // Save final position to Firestore FIRST (prevents visual jump)
@@ -127,45 +177,70 @@ export function useShapeInteraction({
         console.error('Failed to update shape:', error);
       }
     },
-    [currentUserId, updateShape, updateCurrentCursorPosition]
+    [currentUserId, currentUserName, updateShape, updateCurrentCursorPosition]
   );
 
   /**
    * Handle shape transformation - update position, rotation, and dimensions in real-time using RTDB
+   * Throttled with RAF for 60fps max to prevent FPS drops
    * Also update cursor position during transformation
    */
   const handleShapeTransform = useCallback(
     (shapeId: string, x: number, y: number, rotation: number, width?: number, height?: number, radius?: number, fontSize?: number) => {
       if (!currentUserId) return;
       
-      // Update shape transformation in RTDB (position, rotation, dimensions)
-      updateDragPosition(
-        'global-canvas-v1',
-        shapeId,
-        x,
-        y,
-        currentUserId,
-        currentUserName || 'Unknown User',
-        rotation,
-        width,
-        height,
-        radius,
-        fontSize
-      ).catch(console.error);
-
-      // ALSO update cursor position during transformation
-      updateCurrentCursorPosition();
+      // Cancel any pending RAF
+      if (dragRafRef.current !== null) {
+        cancelAnimationFrame(dragRafRef.current);
+      }
+      
+      // Store pending update (with transformation data)
+      pendingDragUpdateRef.current = { shapeId, x, y, rotation, width, height, radius, fontSize };
+      
+      // Schedule update on next frame (max 60fps)
+      dragRafRef.current = requestAnimationFrame(() => {
+        const pending = pendingDragUpdateRef.current;
+        if (pending) {
+          // Update shape transformation in RTDB (position, rotation, dimensions)
+          updateDragPosition(
+            'global-canvas-v1',
+            pending.shapeId,
+            pending.x,
+            pending.y,
+            currentUserId,
+            currentUserName || 'Unknown User',
+            pending.rotation,
+            pending.width,
+            pending.height,
+            pending.radius,
+            pending.fontSize
+          ).catch(console.error);
+          
+          // ALSO update cursor position during transformation
+          updateCurrentCursorPosition();
+          
+          pendingDragUpdateRef.current = null;
+        }
+        dragRafRef.current = null;
+      });
     },
     [currentUserId, currentUserName, updateCurrentCursorPosition]
   );
 
   /**
    * Handle shape transform end (resize/rotation)
-   * Also update cursor position after transform and clear RTDB state
+   * Also update cursor position after transform and clear RTDB state and cancel any pending RAF
    */
   const handleShapeTransformEnd = useCallback(
     async (shapeId: string, updates: { x?: number; y?: number; width?: number; height?: number; radius?: number; fontSize?: number; rotation?: number }) => {
       if (!currentUserId) return;
+
+      // Cancel any pending RAF
+      if (dragRafRef.current !== null) {
+        cancelAnimationFrame(dragRafRef.current);
+        dragRafRef.current = null;
+      }
+      pendingDragUpdateRef.current = null;
 
       try {
         // Save final state to Firestore

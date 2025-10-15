@@ -11,6 +11,7 @@ import {
   useRef,
   useCallback,
   useEffect,
+  useMemo,
   type ReactNode,
 } from 'react';
 import type { Shape, ShapeUpdate, CanvasContextType } from '../types';
@@ -28,12 +29,6 @@ import {
   cleanupUserLocks,
 } from '../services/canvas';
 import {
-  setUserOnline,
-  setUserOffline,
-  subscribeToPresence,
-  type PresenceData,
-} from '../services/presence';
-import {
   subscribeToDragPositions,
   type DragPosition,
 } from '../services/dragSync';
@@ -48,10 +43,13 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
   const [shapes, setShapes] = useState<Shape[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [onlineUsers, setOnlineUsers] = useState<PresenceData[]>([]);
   const [dragPositions, setDragPositions] = useState<Map<string, DragPosition>>(new Map());
   const [localUpdates, setLocalUpdates] = useState<Map<string, Partial<Shape>>>(new Map());
   const { currentUser } = useAuth();
+  
+  // RAF throttling for incoming drag updates to prevent FPS drops
+  const dragUpdateRafRef = useRef<number | null>(null);
+  const pendingDragPositionsRef = useRef<Map<string, DragPosition> | null>(null);
   
   // Counter for shape names (increments and never resets)
   const shapeCounterRef = useRef<{ [key: string]: number }>({
@@ -76,7 +74,6 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
     if (!currentUser) return;
 
     let unsubscribeShapes: (() => void) | null = null;
-    let unsubscribePresence: (() => void) | null = null;
     let unsubscribeDrag: (() => void) | null = null;
 
     const setupCanvas = async () => {
@@ -136,19 +133,26 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
         });
 
         // Subscribe to real-time drag positions (ephemeral state from RTDB for <100ms sync)
+        // Throttled with RAF to prevent FPS drops when other users drag
         unsubscribeDrag = subscribeToDragPositions('global-canvas-v1', (positions) => {
-          setDragPositions(positions);
+          // Cancel any pending RAF
+          if (dragUpdateRafRef.current !== null) {
+            cancelAnimationFrame(dragUpdateRafRef.current);
+          }
+          
+          // Store the latest positions
+          pendingDragPositionsRef.current = positions;
+          
+          // Schedule update on next frame (max 60fps)
+          dragUpdateRafRef.current = requestAnimationFrame(() => {
+            if (pendingDragPositionsRef.current) {
+              setDragPositions(pendingDragPositionsRef.current);
+              pendingDragPositionsRef.current = null;
+            }
+            dragUpdateRafRef.current = null;
+          });
         });
 
-        // Set user as online and subscribe to presence
-        await setUserOnline(
-          currentUser.uid,
-          currentUser.displayName || 'Unknown User'
-        );
-
-        unsubscribePresence = subscribeToPresence((users) => {
-          setOnlineUsers(users);
-        });
       } catch (error) {
         console.error('Failed to setup canvas:', error);
         setLoading(false);
@@ -162,17 +166,17 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       if (unsubscribeShapes) {
         unsubscribeShapes();
       }
-      if (unsubscribePresence) {
-        unsubscribePresence();
-      }
       if (unsubscribeDrag) {
         unsubscribeDrag();
+      }
+      // Cancel any pending drag RAF
+      if (dragUpdateRafRef.current !== null) {
+        cancelAnimationFrame(dragUpdateRafRef.current);
       }
       // Use the ref to get userId for cleanup, even if currentUser is already null
       const userId = currentUserIdRef.current;
       if (userId) {
         cleanupUserLocks(userId).catch(console.error);
-        setUserOffline(userId).catch(console.error);
       }
     };
   }, [currentUser]);
@@ -366,77 +370,106 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
   );
 
   // Merge real-time drag positions and local updates with persistent shapes
-  const shapesWithDragPositions = shapes.map(shape => {
-    let mergedShape: Shape = { ...shape };
-    
-    // First, apply local updates (optimistic updates for properties panel)
-    const localUpdate = localUpdates.get(shape.id);
-    if (localUpdate) {
-      mergedShape = { ...mergedShape, ...localUpdate } as Shape;
-    }
-    
-    // Then, apply drag positions (real-time RTDB updates from other users)
-    const dragPos = dragPositions.get(shape.id);
-    if (dragPos && dragPos.draggingBy !== currentUser?.uid) {
-      // Apply real-time position, rotation, and dimensions from RTDB if being transformed by another user
-      const updates: any = {
-        ...mergedShape,
-        x: dragPos.x,
-        y: dragPos.y,
-        isDragging: true,
-        draggingBy: dragPos.draggingBy,
-        draggingByName: dragPos.draggingByName,
-      };
+  // Memoized to prevent unnecessary re-renders - only recompute when dependencies change
+  // CRITICAL: Only create new objects for shapes that actually changed to maintain referential equality
+  const shapesWithDragPositions = useMemo(() => {
+    return shapes.map(shape => {
+      const localUpdate = localUpdates.get(shape.id);
+      const dragPos = dragPositions.get(shape.id);
+      const isDraggedByOther = dragPos && dragPos.draggingBy !== currentUser?.uid;
       
-      // Include rotation if it's being updated
-      if (dragPos.rotation !== undefined) {
-        updates.rotation = dragPos.rotation;
+      // If no updates for this shape, return the original reference (prevents unnecessary re-renders)
+      if (!localUpdate && !isDraggedByOther) {
+        return shape;
       }
       
-      // Include dimensions if they're being updated (for resize operations)
-      if (mergedShape.type === 'rectangle') {
-        if (dragPos.width !== undefined) {
-          updates.width = dragPos.width;
-        }
-        if (dragPos.height !== undefined) {
-          updates.height = dragPos.height;
-        }
-      } else if (mergedShape.type === 'circle') {
-        if (dragPos.radius !== undefined) {
-          updates.radius = dragPos.radius;
-        }
-      } else if (mergedShape.type === 'text') {
-        if (dragPos.width !== undefined) {
-          updates.width = dragPos.width;
-        }
-        if (dragPos.fontSize !== undefined) {
-          updates.fontSize = dragPos.fontSize;
-        }
+      // Start with shape data
+      let mergedShape: Shape = shape;
+      
+      // Apply local updates if they exist
+      if (localUpdate) {
+        mergedShape = { ...mergedShape, ...localUpdate } as Shape;
       }
       
-      return updates;
-    }
-    return mergedShape;
-  });
+      // Apply drag positions from other users
+      if (isDraggedByOther) {
+        const updates: any = {
+          ...mergedShape,
+          x: dragPos.x,
+          y: dragPos.y,
+          isDragging: true,
+          draggingBy: dragPos.draggingBy,
+          draggingByName: dragPos.draggingByName,
+        };
+        
+        // Include rotation if it's being updated
+        if (dragPos.rotation !== undefined) {
+          updates.rotation = dragPos.rotation;
+        }
+        
+        // Include dimensions if they're being updated (for resize operations)
+        if (mergedShape.type === 'rectangle') {
+          if (dragPos.width !== undefined) {
+            updates.width = dragPos.width;
+          }
+          if (dragPos.height !== undefined) {
+            updates.height = dragPos.height;
+          }
+        } else if (mergedShape.type === 'circle') {
+          if (dragPos.radius !== undefined) {
+            updates.radius = dragPos.radius;
+          }
+        } else if (mergedShape.type === 'text') {
+          if (dragPos.width !== undefined) {
+            updates.width = dragPos.width;
+          }
+          if (dragPos.fontSize !== undefined) {
+            updates.fontSize = dragPos.fontSize;
+          }
+        }
+        
+        return updates;
+      }
+      
+      return mergedShape;
+    });
+  }, [shapes, dragPositions, localUpdates, currentUser?.uid]);
 
-  const value: CanvasContextType = {
-    shapes: shapesWithDragPositions,
-    selectedId,
-    loading,
-    onlineUsers,
-    addShape,
-    updateShape,
-    deleteShape,
-    selectShape,
-    lockShape,
-    unlockShape,
-    reorderShapes,
-  };
+  // Memoize the context value to prevent unnecessary re-renders of consumers
+  const value: CanvasContextType = useMemo(
+    () => ({
+      shapes: shapesWithDragPositions,
+      selectedId,
+      loading,
+      addShape,
+      updateShape,
+      deleteShape,
+      selectShape,
+      lockShape,
+      unlockShape,
+      reorderShapes,
+    }),
+    [
+      shapesWithDragPositions,
+      selectedId,
+      loading,
+      addShape,
+      updateShape,
+      deleteShape,
+      selectShape,
+      lockShape,
+      unlockShape,
+      reorderShapes,
+    ]
+  );
 
   return (
     <CanvasContext.Provider value={value}>{children}</CanvasContext.Provider>
   );
 }
+
+// Add displayName for Fast Refresh compatibility
+CanvasProvider.displayName = 'CanvasProvider';
 
 /**
  * Hook to use canvas context

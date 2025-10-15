@@ -5,6 +5,7 @@
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { CanvasProvider } from './contexts/CanvasContext';
+import { PresenceProvider } from './contexts/PresenceContext';
 import { Login } from './components/Auth/Login';
 import { Navbar } from './components/Layout/Navbar';
 import { Canvas } from './components/Canvas/Canvas';
@@ -31,14 +32,16 @@ function AppContent() {
 
   // Show main app if authenticated
   return (
-    <CanvasProvider>
-      <div className="h-screen w-screen flex flex-col overflow-hidden">
-        <Navbar />
-        <main className="flex-1 bg-gray-50 overflow-hidden">
-          <Canvas />
-        </main>
-      </div>
-    </CanvasProvider>
+    <PresenceProvider>
+      <CanvasProvider>
+        <div className="h-screen w-screen flex flex-col overflow-hidden">
+          <Navbar />
+          <main className="flex-1 bg-gray-50 overflow-hidden">
+            <Canvas />
+          </main>
+        </div>
+      </CanvasProvider>
+    </PresenceProvider>
   );
 }
 

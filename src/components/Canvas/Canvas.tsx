@@ -24,7 +24,7 @@ import { ToolSelector, type Tool } from './ToolSelector';
 import { Shape } from './Shape';
 import { PropertiesPanel } from './PropertiesPanel';
 import { LayersPanel } from './LayersPanel';
-import { Cursor } from '../Collaboration/Cursor';
+import { CursorsLayer } from './CursorsLayer';
 import { Tutorial } from './Tutorial';
 import { FPSCounter } from './FPSCounter';
 import { useCanvasPanZoom } from '../../hooks/useCanvasPanZoom';
@@ -47,7 +47,7 @@ export function Canvas() {
   const [showGrid, setShowGrid] = useState(true);
   const [selectedTool, setSelectedTool] = useState<Tool>('select');
 
-  const { shapes, selectedId, selectShape, addShape, updateShape, deleteShape, reorderShapes, loading, onlineUsers } = useCanvasContext();
+  const { shapes, selectedId, selectShape, addShape, updateShape, deleteShape, reorderShapes, loading } = useCanvasContext();
   const { currentUser } = useAuth();
 
   const selectedShape = shapes.find(s => s.id === selectedId) || null;
@@ -426,16 +426,8 @@ export function Canvas() {
               </>
             )}
 
-            {/* Multiplayer Cursors - rendered within canvas */}
-            {onlineUsers
-              .filter((user) => user.uid !== currentUser?.uid && user.isOnline)
-              .map((user) => (
-                <Cursor
-                  key={user.uid}
-                  user={user}
-                  scale={stageScale}
-                />
-              ))}
+            {/* Multiplayer Cursors - isolated to prevent Canvas re-renders */}
+            <CursorsLayer scale={stageScale} />
           </Layer>
         </Stage>
 

@@ -5,11 +5,11 @@
 
 import { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
-import { useCanvasContext } from '../../contexts/CanvasContext';
+import { usePresenceContext } from '../../contexts/PresenceContext';
 
 export function Navbar() {
   const { currentUser, logout } = useAuth();
-  const { onlineUsers } = useCanvasContext();
+  const { onlineUsers } = usePresenceContext();
   const [showAllUsers, setShowAllUsers] = useState(false);
 
   const handleLogout = async () => {
