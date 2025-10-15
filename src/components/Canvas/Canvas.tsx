@@ -35,6 +35,7 @@ import { PropertiesPanel } from './PropertiesPanel';
 import { LayersPanel } from './LayersPanel';
 import { Cursor } from '../Collaboration/Cursor';
 import { Tutorial } from './Tutorial';
+import { FPSCounter } from './FPSCounter';
 import type { RectangleShape, CircleShape, TextShape, ShapeUpdate } from '../../types';
 
 interface NewShapePreview {
@@ -312,11 +313,17 @@ export function Canvas() {
           });
         } else if (selectedTool === 'text') {
           // Create text immediately at click position with default "Text" content
+          // Calculate zIndex for new shape
+          const maxZIndex = shapes.length > 0 
+            ? Math.max(...shapes.map(s => s.zIndex)) 
+            : -1;
+          
           const textShape: Omit<TextShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'> = {
             type: 'text',
             x: canvasPos.x,
             y: canvasPos.y,
             rotation: 0,
+            zIndex: maxZIndex + 1,
             text: 'Text',
             fontSize: DEFAULT_TEXT_SIZE,
             fontFamily: DEFAULT_TEXT_FONT,
@@ -398,6 +405,11 @@ export function Canvas() {
       newShapePreview.width >= MIN_SHAPE_SIZE &&
       newShapePreview.height >= MIN_SHAPE_SIZE
     ) {
+      // Calculate zIndex for new shape
+      const maxZIndex = shapes.length > 0 
+        ? Math.max(...shapes.map(s => s.zIndex)) 
+        : -1;
+      
       if (selectedTool === 'rectangle') {
         const rectShape: Omit<RectangleShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'> = {
           type: 'rectangle',
@@ -406,6 +418,7 @@ export function Canvas() {
           width: newShapePreview.width,
           height: newShapePreview.height,
           rotation: 0,
+          zIndex: maxZIndex + 1,
           fill: DEFAULT_SHAPE_FILL,
           stroke: DEFAULT_SHAPE_STROKE,
           strokeWidth: DEFAULT_SHAPE_STROKE_WIDTH,
@@ -421,6 +434,7 @@ export function Canvas() {
           y: newShapePreview.y + newShapePreview.height / 2,
           radius: radius,
           rotation: 0,
+          zIndex: maxZIndex + 1,
           fill: DEFAULT_SHAPE_FILL,
           stroke: DEFAULT_SHAPE_STROKE,
           strokeWidth: DEFAULT_SHAPE_STROKE_WIDTH,
@@ -448,41 +462,31 @@ export function Canvas() {
   );
 
   /**
-   * Handle shape drag start - mark shape as being dragged
-   * Also update cursor position at drag start
+   * Handle shape drag start
+   * No Firestore writes needed - drag state is handled by RTDB in dragSync
+   * Just update cursor position for smooth tracking
    */
   const handleShapeDragStart = useCallback(
-    async (shapeId: string) => {
+    (_shapeId: string) => {
       if (!currentUser) return;
       
-      try {
-        // Mark shape as being dragged by current user
-        await updateShape(shapeId, {
-          isDragging: true,
-          draggingBy: currentUser.uid,
-          draggingByName: currentUser.displayName || 'Unknown User',
-        });
-
-        // Update cursor position at drag start
-        const stage = stageRef.current;
-        if (stage) {
-          const pointer = stage.getPointerPosition();
-          if (pointer) {
-            const canvasPos = screenToCanvas(
-              pointer.x,
-              pointer.y,
-              stagePosition.x,
-              stagePosition.y,
-              stageScale
-            );
-            updateCursorPosition(currentUser.uid, canvasPos.x, canvasPos.y);
-          }
+      // Update cursor position at drag start
+      const stage = stageRef.current;
+      if (stage) {
+        const pointer = stage.getPointerPosition();
+        if (pointer) {
+          const canvasPos = screenToCanvas(
+            pointer.x,
+            pointer.y,
+            stagePosition.x,
+            stagePosition.y,
+            stageScale
+          );
+          updateCursorPosition(currentUser.uid, canvasPos.x, canvasPos.y);
         }
-      } catch (error) {
-        console.error('Failed to mark shape as dragging:', error);
       }
     },
-    [currentUser, updateShape, stagePosition, stageScale]
+    [currentUser, stagePosition, stageScale]
   );
 
   /**
@@ -533,16 +537,10 @@ export function Canvas() {
       if (!currentUser) return;
 
       try {
-        // Save final position to Firestore FIRST (prevents visual jump)
-        await updateShape(shapeId, {
-          x,
-          y,
-          isDragging: false,
-          draggingBy: null,
-          draggingByName: null,
-        });
+        // Save final position to Firestore (only position, no drag flags)
+        await updateShape(shapeId, { x, y });
         
-        // Then clear real-time drag position from RTDB
+        // Clear real-time drag position from RTDB
         await clearDragPosition('global-canvas-v1', shapeId);
 
         // Update cursor position at drag end
@@ -1073,6 +1071,9 @@ export function Canvas() {
               ))}
           </Layer>
         </Stage>
+
+        {/* FPS Counter */}
+        <FPSCounter />
 
         {/* Canvas info overlay */}
         <div className="absolute bottom-4 left-4 bg-white bg-opacity-90 px-3 py-2 rounded-lg shadow-lg text-xs text-gray-600">

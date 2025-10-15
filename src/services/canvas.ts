@@ -16,6 +16,12 @@ import {
   onSnapshot,
   serverTimestamp,
   updateDoc,
+  collection,
+  query,
+  orderBy,
+  getDocs,
+  deleteDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import type { Unsubscribe } from 'firebase/firestore';
 import { onDisconnect, ref, set, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
@@ -28,6 +34,7 @@ import type { Shape, CanvasDocument } from '../types';
 
 export const GLOBAL_CANVAS_ID = 'global-canvas-v1';
 const CANVAS_COLLECTION = 'canvas';
+const SHAPES_SUBCOLLECTION = 'shapes';
 const LOCK_TIMEOUT_MS = 5000; // Auto-release locks after 5 seconds
 
 // ============================================================================
@@ -109,29 +116,28 @@ export async function initializeCanvas(): Promise<void> {
 // ============================================================================
 
 /**
- * Subscribe to real-time shape updates from Firestore
+ * Subscribe to real-time shape updates from Firestore subcollection
  * Returns an unsubscribe function to clean up the listener
+ * NEW: Each shape is now a separate document for efficient updates
  */
 export function subscribeToShapes(
   callback: ShapeSubscriptionCallback
 ): Unsubscribe {
-  const canvasRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID);
+  const shapesRef = collection(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID, SHAPES_SUBCOLLECTION);
+  const shapesQuery = query(shapesRef, orderBy('zIndex', 'asc'));
   
   return onSnapshot(
-    canvasRef,
+    shapesQuery,
     (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data() as CanvasDocument;
-        callback(data.shapes || []);
-      } else {
-        // Canvas doesn't exist yet, initialize it
-        initializeCanvas().catch(console.error);
-        callback([]);
-      }
+      const shapes: Shape[] = [];
+      snapshot.forEach((doc) => {
+        shapes.push(doc.data() as Shape);
+      });
+      callback(shapes);
     },
     (error) => {
-      console.error('Error listening to canvas updates:', error);
-      throw new Error('Failed to sync canvas data');
+      console.error('Error listening to shapes updates:', error);
+      throw new Error('Failed to sync shapes data');
     }
   );
 }
@@ -142,9 +148,11 @@ export function subscribeToShapes(
 
 /**
  * Add a new shape to the canvas
+ * NEW: Creates a separate document for the shape (efficient!)
  */
 export async function createShape(shape: Shape): Promise<void> {
   try {
+    // Ensure canvas document exists
     const canvasRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID);
     const canvasSnap = await getDoc(canvasRef);
     
@@ -152,16 +160,9 @@ export async function createShape(shape: Shape): Promise<void> {
       await initializeCanvas();
     }
     
-    const currentData = canvasSnap.exists() 
-      ? (canvasSnap.data() as CanvasDocument)
-      : { canvasId: GLOBAL_CANVAS_ID, shapes: [], lastUpdated: Date.now() };
-    
-    const updatedShapes = [...currentData.shapes, shape];
-    
-    await updateDoc(canvasRef, {
-      shapes: updatedShapes,
-      lastUpdated: serverTimestamp(),
-    });
+    // Create shape as individual document in subcollection
+    const shapeRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID, SHAPES_SUBCOLLECTION, shape.id);
+    await setDoc(shapeRef, shape);
   } catch (error) {
     console.error('Failed to create shape:', error);
     throw new Error('Failed to create shape');
@@ -170,28 +171,16 @@ export async function createShape(shape: Shape): Promise<void> {
 
 /**
  * Update an existing shape
+ * NEW: Only updates the specific shape document (HUGE performance improvement!)
  */
 export async function updateShape(
   shapeId: string,
   updates: Partial<Shape>
 ): Promise<void> {
   try {
-    const canvasRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID);
-    const canvasSnap = await getDoc(canvasRef);
-    
-    if (!canvasSnap.exists()) {
-      throw new Error('Canvas not found');
-    }
-    
-    const currentData = canvasSnap.data() as CanvasDocument;
-    const updatedShapes = currentData.shapes.map((shape) =>
-      shape.id === shapeId ? { ...shape, ...updates } : shape
-    );
-    
-    await updateDoc(canvasRef, {
-      shapes: updatedShapes,
-      lastUpdated: serverTimestamp(),
-    });
+    // Update only the specific shape document
+    const shapeRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID, SHAPES_SUBCOLLECTION, shapeId);
+    await updateDoc(shapeRef, updates);
   } catch (error) {
     console.error('Failed to update shape:', error);
     throw new Error('Failed to update shape');
@@ -201,25 +190,25 @@ export async function updateShape(
 /**
  * Delete a shape from the canvas
  * Only allows deletion if shape is not locked by another user
+ * NEW: Deletes only the specific shape document
  */
 export async function deleteShape(
   shapeId: string,
   currentUserId: string
 ): Promise<void> {
   try {
-    const canvasRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID);
-    const canvasSnap = await getDoc(canvasRef);
+    const shapeRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID, SHAPES_SUBCOLLECTION, shapeId);
+    const shapeSnap = await getDoc(shapeRef);
     
-    if (!canvasSnap.exists()) {
-      throw new Error('Canvas not found');
+    if (!shapeSnap.exists()) {
+      throw new Error('Shape not found');
     }
     
-    const currentData = canvasSnap.data() as CanvasDocument;
-    const shapeToDelete = currentData.shapes.find((s) => s.id === shapeId);
+    const shapeToDelete = shapeSnap.data() as Shape;
     
     // Check if shape is locked by another user
     if (
-      shapeToDelete?.isLocked &&
+      shapeToDelete.isLocked &&
       shapeToDelete.lockedBy &&
       shapeToDelete.lockedBy !== currentUserId
     ) {
@@ -228,12 +217,8 @@ export async function deleteShape(
       );
     }
     
-    const updatedShapes = currentData.shapes.filter((s) => s.id !== shapeId);
-    
-    await updateDoc(canvasRef, {
-      shapes: updatedShapes,
-      lastUpdated: serverTimestamp(),
-    });
+    // Delete the shape document
+    await deleteDoc(shapeRef);
   } catch (error) {
     console.error('Failed to delete shape:', error);
     throw error;
@@ -242,15 +227,19 @@ export async function deleteShape(
 
 /**
  * Reorder shapes (for z-index management)
+ * NEW: Updates zIndex field for each shape using batch writes
  */
 export async function reorderShapes(shapes: Shape[]): Promise<void> {
   try {
-    const canvasRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID);
+    const batch = writeBatch(db);
     
-    await updateDoc(canvasRef, {
-      shapes: shapes,
-      lastUpdated: serverTimestamp(),
+    // Update zIndex for each shape
+    shapes.forEach((shape, index) => {
+      const shapeRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID, SHAPES_SUBCOLLECTION, shape.id);
+      batch.update(shapeRef, { zIndex: index });
     });
+    
+    await batch.commit();
   } catch (error) {
     console.error('Failed to reorder shapes:', error);
     throw new Error('Failed to reorder shapes');
@@ -264,6 +253,7 @@ export async function reorderShapes(shapes: Shape[]): Promise<void> {
 /**
  * Lock a shape when user starts dragging
  * Sets up auto-release on disconnect using Realtime Database
+ * NEW: Updates only the specific shape document
  */
 export async function lockShape(
   shapeId: string,
@@ -271,20 +261,18 @@ export async function lockShape(
   userName: string
 ): Promise<void> {
   try {
-    // Update Firestore with lock
-    const canvasRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID);
-    const canvasSnap = await getDoc(canvasRef);
+    const shapeRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID, SHAPES_SUBCOLLECTION, shapeId);
+    const shapeSnap = await getDoc(shapeRef);
     
-    if (!canvasSnap.exists()) {
-      throw new Error('Canvas not found');
+    if (!shapeSnap.exists()) {
+      throw new Error('Shape not found');
     }
     
-    const currentData = canvasSnap.data() as CanvasDocument;
-    const shapeToLock = currentData.shapes.find((s) => s.id === shapeId);
+    const shapeToLock = shapeSnap.data() as Shape;
     
     // Check if already locked by another user
     if (
-      shapeToLock?.isLocked &&
+      shapeToLock.isLocked &&
       shapeToLock.lockedBy &&
       shapeToLock.lockedBy !== userId
     ) {
@@ -293,20 +281,11 @@ export async function lockShape(
       );
     }
     
-    const updatedShapes = currentData.shapes.map((shape) =>
-      shape.id === shapeId
-        ? {
-            ...shape,
-            isLocked: true,
-            lockedBy: userId,
-            lockedByName: userName,
-          }
-        : shape
-    );
-    
-    await updateDoc(canvasRef, {
-      shapes: updatedShapes,
-      lastUpdated: serverTimestamp(),
+    // Update only this shape's lock status
+    await updateDoc(shapeRef, {
+      isLocked: true,
+      lockedBy: userId,
+      lockedByName: userName,
     });
     
     // Set up auto-release in Realtime Database using onDisconnect
@@ -332,6 +311,7 @@ export async function lockShape(
 
 /**
  * Unlock a shape when user stops dragging
+ * NEW: Updates only the specific shape document
  */
 export async function unlockShape(
   shapeId: string,
@@ -341,36 +321,25 @@ export async function unlockShape(
     // Clear timeout
     clearLockTimeout(shapeId);
     
-    // Update Firestore
-    const canvasRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID);
-    const canvasSnap = await getDoc(canvasRef);
+    const shapeRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID, SHAPES_SUBCOLLECTION, shapeId);
+    const shapeSnap = await getDoc(shapeRef);
     
-    if (!canvasSnap.exists()) {
-      throw new Error('Canvas not found');
+    if (!shapeSnap.exists()) {
+      return; // Shape was deleted, nothing to unlock
     }
     
-    const currentData = canvasSnap.data() as CanvasDocument;
-    const shapeToUnlock = currentData.shapes.find((s) => s.id === shapeId);
+    const shapeToUnlock = shapeSnap.data() as Shape;
     
     // Only unlock if locked by current user
-    if (shapeToUnlock?.lockedBy !== userId) {
+    if (shapeToUnlock.lockedBy !== userId) {
       return; // Silently return if not locked by this user
     }
     
-    const updatedShapes = currentData.shapes.map((shape) =>
-      shape.id === shapeId
-        ? {
-            ...shape,
-            isLocked: false,
-            lockedBy: null,
-            lockedByName: null,
-          }
-        : shape
-    );
-    
-    await updateDoc(canvasRef, {
-      shapes: updatedShapes,
-      lastUpdated: serverTimestamp(),
+    // Update only this shape's lock status
+    await updateDoc(shapeRef, {
+      isLocked: false,
+      lockedBy: null,
+      lockedByName: null,
     });
     
     // Remove lock from Realtime Database
@@ -384,32 +353,33 @@ export async function unlockShape(
 
 /**
  * Clean up all locks for a specific user (call on disconnect)
+ * NEW: Uses batch writes to unlock multiple shapes efficiently
  */
 export async function cleanupUserLocks(userId: string): Promise<void> {
   try {
-    const canvasRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID);
-    const canvasSnap = await getDoc(canvasRef);
+    // Query all shapes locked by this user
+    const shapesRef = collection(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID, SHAPES_SUBCOLLECTION);
+    const shapesSnap = await getDocs(shapesRef);
     
-    if (!canvasSnap.exists()) {
-      return;
-    }
+    const batch = writeBatch(db);
+    let hasUpdates = false;
     
-    const currentData = canvasSnap.data() as CanvasDocument;
-    const updatedShapes = currentData.shapes.map((shape) =>
-      shape.lockedBy === userId
-        ? {
-            ...shape,
-            isLocked: false,
-            lockedBy: null,
-            lockedByName: null,
-          }
-        : shape
-    );
-    
-    await updateDoc(canvasRef, {
-      shapes: updatedShapes,
-      lastUpdated: serverTimestamp(),
+    shapesSnap.forEach((docSnap) => {
+      const shape = docSnap.data() as Shape;
+      if (shape.lockedBy === userId) {
+        const shapeRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID, SHAPES_SUBCOLLECTION, shape.id);
+        batch.update(shapeRef, {
+          isLocked: false,
+          lockedBy: null,
+          lockedByName: null,
+        });
+        hasUpdates = true;
+      }
     });
+    
+    if (hasUpdates) {
+      await batch.commit();
+    }
   } catch (error) {
     console.error('Failed to cleanup user locks:', error);
   }

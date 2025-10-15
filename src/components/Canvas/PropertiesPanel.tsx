@@ -5,6 +5,7 @@
  */
 
 import { useCallback, useState, useEffect, memo } from 'react';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import type { Shape, RectangleShape, CircleShape, TextShape } from '../../types';
 
 interface PropertiesPanelProps {
@@ -15,16 +16,108 @@ interface PropertiesPanelProps {
 function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelProps) {
   const [hasFill, setHasFill] = useState(true);
   const [hasStroke, setHasStroke] = useState(true);
+  
+  // Local state for input values (for immediate UI feedback)
+  const [localX, setLocalX] = useState(0);
+  const [localY, setLocalY] = useState(0);
+  const [localWidth, setLocalWidth] = useState(0);
+  const [localHeight, setLocalHeight] = useState(0);
+  const [localRadius, setLocalRadius] = useState(0);
+  const [localCornerRadius, setLocalCornerRadius] = useState(0);
+  const [localStrokeWidth, setLocalStrokeWidth] = useState(0);
+  const [localFontSize, setLocalFontSize] = useState(16);
+  
+  // Debounced values (only update database after 300ms of no changes)
+  const debouncedX = useDebouncedValue(localX, 300);
+  const debouncedY = useDebouncedValue(localY, 300);
+  const debouncedWidth = useDebouncedValue(localWidth, 300);
+  const debouncedHeight = useDebouncedValue(localHeight, 300);
+  const debouncedRadius = useDebouncedValue(localRadius, 300);
+  const debouncedCornerRadius = useDebouncedValue(localCornerRadius, 300);
+  const debouncedStrokeWidth = useDebouncedValue(localStrokeWidth, 300);
+  const debouncedFontSize = useDebouncedValue(localFontSize, 300);
 
-  // Sync visibility states when shape changes
+  // Sync local state when shape changes
   useEffect(() => {
-    if (selectedShape && 'fill' in selectedShape) {
+    if (!selectedShape) return;
+    
+    setLocalX(Math.round(selectedShape.x));
+    setLocalY(Math.round(selectedShape.y));
+    
+    if (selectedShape.type === 'rectangle') {
+      setLocalWidth(Math.round(selectedShape.width));
+      setLocalHeight(Math.round(selectedShape.height));
+      setLocalCornerRadius(selectedShape.cornerRadius);
+      setLocalStrokeWidth(selectedShape.strokeWidth);
       setHasFill(selectedShape.fill !== 'transparent');
+      setHasStroke(selectedShape.stroke !== 'transparent');
+    } else if (selectedShape.type === 'circle') {
+      setLocalRadius(Math.round(selectedShape.radius));
+      setLocalStrokeWidth(selectedShape.strokeWidth);
+      setHasFill(selectedShape.fill !== 'transparent');
+      setHasStroke(selectedShape.stroke !== 'transparent');
+    } else if (selectedShape.type === 'text') {
+      setLocalFontSize(selectedShape.fontSize);
     }
-    if (selectedShape && ('stroke' in selectedShape)) {
-      setHasStroke((selectedShape as RectangleShape | CircleShape).stroke !== 'transparent');
+  }, [selectedShape?.id]);
+  
+  // Update database when debounced values change
+  useEffect(() => {
+    if (!selectedShape) return;
+    if (Math.round(selectedShape.x) !== debouncedX) {
+      onUpdate({ x: debouncedX });
     }
-  }, [selectedShape?.id, selectedShape]);
+  }, [debouncedX]);
+  
+  useEffect(() => {
+    if (!selectedShape) return;
+    if (Math.round(selectedShape.y) !== debouncedY) {
+      onUpdate({ y: debouncedY });
+    }
+  }, [debouncedY]);
+  
+  useEffect(() => {
+    if (!selectedShape || selectedShape.type !== 'rectangle') return;
+    if (Math.round(selectedShape.width) !== debouncedWidth) {
+      onUpdate({ width: debouncedWidth });
+    }
+  }, [debouncedWidth]);
+  
+  useEffect(() => {
+    if (!selectedShape || selectedShape.type !== 'rectangle') return;
+    if (Math.round(selectedShape.height) !== debouncedHeight) {
+      onUpdate({ height: debouncedHeight });
+    }
+  }, [debouncedHeight]);
+  
+  useEffect(() => {
+    if (!selectedShape || selectedShape.type !== 'circle') return;
+    if (Math.round(selectedShape.radius) !== debouncedRadius) {
+      onUpdate({ radius: debouncedRadius });
+    }
+  }, [debouncedRadius]);
+  
+  useEffect(() => {
+    if (!selectedShape || selectedShape.type !== 'rectangle') return;
+    if (selectedShape.cornerRadius !== debouncedCornerRadius) {
+      onUpdate({ cornerRadius: debouncedCornerRadius });
+    }
+  }, [debouncedCornerRadius]);
+  
+  useEffect(() => {
+    if (!selectedShape || (selectedShape.type !== 'rectangle' && selectedShape.type !== 'circle')) return;
+    const currentStrokeWidth = (selectedShape as RectangleShape | CircleShape).strokeWidth;
+    if (currentStrokeWidth !== debouncedStrokeWidth) {
+      onUpdate({ strokeWidth: debouncedStrokeWidth });
+    }
+  }, [debouncedStrokeWidth]);
+  
+  useEffect(() => {
+    if (!selectedShape || selectedShape.type !== 'text') return;
+    if (selectedShape.fontSize !== debouncedFontSize) {
+      onUpdate({ fontSize: debouncedFontSize });
+    }
+  }, [debouncedFontSize]);
 
   // Handle fill color change - apply immediately
   const handleFillColorChange = useCallback((color: string) => {
@@ -100,8 +193,8 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
               <label className="text-xs text-gray-600 mb-1 block">X</label>
               <input
                 type="number"
-                value={Math.round(selectedShape.x)}
-                onChange={(e) => onUpdate({ x: parseInt(e.target.value) || 0 })}
+                value={localX}
+                onChange={(e) => setLocalX(parseInt(e.target.value) || 0)}
                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -109,8 +202,8 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
               <label className="text-xs text-gray-600 mb-1 block">Y</label>
               <input
                 type="number"
-                value={Math.round(selectedShape.y)}
-                onChange={(e) => onUpdate({ y: parseInt(e.target.value) || 0 })}
+                value={localY}
+                onChange={(e) => setLocalY(parseInt(e.target.value) || 0)}
                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -128,8 +221,8 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
                   <label className="text-xs text-gray-600 mb-1 block">W</label>
                   <input
                     type="number"
-                    value={Math.round(selectedShape.width)}
-                    onChange={(e) => onUpdate({ width: parseInt(e.target.value) || 10 })}
+                    value={localWidth}
+                    onChange={(e) => setLocalWidth(parseInt(e.target.value) || 10)}
                     className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -137,8 +230,8 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
                   <label className="text-xs text-gray-600 mb-1 block">H</label>
                   <input
                     type="number"
-                    value={Math.round(selectedShape.height)}
-                    onChange={(e) => onUpdate({ height: parseInt(e.target.value) || 10 })}
+                    value={localHeight}
+                    onChange={(e) => setLocalHeight(parseInt(e.target.value) || 10)}
                     className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -153,16 +246,16 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
                   type="range"
                   min="0"
                   max="100"
-                  value={selectedShape.cornerRadius}
-                  onChange={(e) => onUpdate({ cornerRadius: parseInt(e.target.value) })}
+                  value={localCornerRadius}
+                  onChange={(e) => setLocalCornerRadius(parseInt(e.target.value))}
                   className="flex-1"
                 />
                 <input
                   type="number"
                   min="0"
                   max="500"
-                  value={selectedShape.cornerRadius}
-                  onChange={(e) => onUpdate({ cornerRadius: parseInt(e.target.value) || 0 })}
+                  value={localCornerRadius}
+                  onChange={(e) => setLocalCornerRadius(parseInt(e.target.value) || 0)}
                   className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -249,16 +342,16 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
                     type="range"
                     min="0"
                     max="50"
-                    value={(selectedShape as RectangleShape).strokeWidth}
-                    onChange={(e) => onUpdate({ strokeWidth: parseInt(e.target.value) })}
+                    value={localStrokeWidth}
+                    onChange={(e) => setLocalStrokeWidth(parseInt(e.target.value))}
                     className="flex-1"
                   />
                   <input
                     type="number"
                     min="0"
                     max="200"
-                    value={(selectedShape as RectangleShape).strokeWidth}
-                    onChange={(e) => onUpdate({ strokeWidth: parseInt(e.target.value) || 0 })}
+                    value={localStrokeWidth}
+                    onChange={(e) => setLocalStrokeWidth(parseInt(e.target.value) || 0)}
                     className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -276,8 +369,8 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
               <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Radius</div>
               <input
                 type="number"
-                value={Math.round((selectedShape as CircleShape).radius)}
-                onChange={(e) => onUpdate({ radius: parseInt(e.target.value) || 10 })}
+                value={localRadius}
+                onChange={(e) => setLocalRadius(parseInt(e.target.value) || 10)}
                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -363,16 +456,16 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
                     type="range"
                     min="0"
                     max="50"
-                    value={(selectedShape as CircleShape).strokeWidth}
-                    onChange={(e) => onUpdate({ strokeWidth: parseInt(e.target.value) })}
+                    value={localStrokeWidth}
+                    onChange={(e) => setLocalStrokeWidth(parseInt(e.target.value))}
                     className="flex-1"
                   />
                   <input
                     type="number"
                     min="0"
                     max="200"
-                    value={(selectedShape as CircleShape).strokeWidth}
-                    onChange={(e) => onUpdate({ strokeWidth: parseInt(e.target.value) || 0 })}
+                    value={localStrokeWidth}
+                    onChange={(e) => setLocalStrokeWidth(parseInt(e.target.value) || 0)}
                     className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -405,16 +498,16 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
                   type="range"
                   min="8"
                   max="72"
-                  value={(selectedShape as TextShape).fontSize}
-                  onChange={(e) => onUpdate({ fontSize: parseInt(e.target.value) })}
+                  value={localFontSize}
+                  onChange={(e) => setLocalFontSize(parseInt(e.target.value))}
                   className="flex-1"
                 />
                 <input
                   type="number"
                   min="8"
                   max="200"
-                  value={(selectedShape as TextShape).fontSize}
-                  onChange={(e) => onUpdate({ fontSize: parseInt(e.target.value) || 16 })}
+                  value={localFontSize}
+                  onChange={(e) => setLocalFontSize(parseInt(e.target.value) || 16)}
                   className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>

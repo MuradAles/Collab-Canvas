@@ -456,12 +456,58 @@ function ShapeComponent({ shape, isSelected, onSelect, onDragStart, onDragMove, 
 
 // Export memoized component to prevent unnecessary re-renders
 export const Shape = memo(ShapeComponent, (prevProps, nextProps) => {
-  // Custom comparison function for optimal performance
-  return (
-    prevProps.shape.id === nextProps.shape.id &&
-    prevProps.isSelected === nextProps.isSelected &&
-    prevProps.isDraggable === nextProps.isDraggable &&
-    // Deep compare shape properties
-    JSON.stringify(prevProps.shape) === JSON.stringify(nextProps.shape)
-  );
+  // Optimized comparison - check only essential properties
+  // Avoid expensive JSON.stringify for better performance
+  
+  if (prevProps.shape.id !== nextProps.shape.id) return false;
+  if (prevProps.isSelected !== nextProps.isSelected) return false;
+  if (prevProps.isDraggable !== nextProps.isDraggable) return false;
+  if (prevProps.currentUserId !== nextProps.currentUserId) return false;
+  
+  const prev = prevProps.shape;
+  const next = nextProps.shape;
+  
+  // Compare critical properties that affect rendering
+  if (prev.x !== next.x || prev.y !== next.y) return false;
+  if (prev.rotation !== next.rotation) return false;
+  if (prev.name !== next.name) return false;
+  if (prev.isLocked !== next.isLocked) return false;
+  if (prev.lockedBy !== next.lockedBy) return false;
+  if (prev.isDragging !== next.isDragging) return false;
+  if (prev.draggingBy !== next.draggingBy) return false;
+  
+  // Type-specific comparisons
+  if (prev.type !== next.type) return false;
+  
+  if (prev.type === 'rectangle' && next.type === 'rectangle') {
+    return (
+      prev.width === next.width &&
+      prev.height === next.height &&
+      prev.fill === next.fill &&
+      prev.stroke === next.stroke &&
+      prev.strokeWidth === next.strokeWidth &&
+      prev.cornerRadius === next.cornerRadius
+    );
+  }
+  
+  if (prev.type === 'circle' && next.type === 'circle') {
+    return (
+      prev.radius === next.radius &&
+      prev.fill === next.fill &&
+      prev.stroke === next.stroke &&
+      prev.strokeWidth === next.strokeWidth
+    );
+  }
+  
+  if (prev.type === 'text' && next.type === 'text') {
+    return (
+      prev.text === next.text &&
+      prev.fontSize === next.fontSize &&
+      prev.fontFamily === next.fontFamily &&
+      prev.fill === next.fill &&
+      (prev.width || 0) === (next.width || 0)
+    );
+  }
+  
+  return true;
 });

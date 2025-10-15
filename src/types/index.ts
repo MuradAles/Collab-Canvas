@@ -16,6 +16,7 @@ export interface BaseShape {
   x: number;
   y: number;
   rotation: number;
+  zIndex: number; // For layer ordering
   isLocked: boolean;
   lockedBy: string | null;
   lockedByName: string | null;

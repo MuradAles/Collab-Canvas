@@ -161,10 +161,16 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
         name = `Text ${shapeNumber}`;
       }
 
+      // Calculate zIndex (new shapes go on top)
+      const maxZIndex = shapes.length > 0 
+        ? Math.max(...shapes.map(s => s.zIndex)) 
+        : -1;
+
       const newShape: Shape = {
         ...shapeData,
         id: generateId(),
         name,
+        zIndex: maxZIndex + 1,
         isLocked: false,
         lockedBy: null,
         lockedByName: null,
@@ -179,7 +185,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
         throw error;
       }
     },
-    [currentUser]
+    [currentUser, shapes]
   );
 
   /**

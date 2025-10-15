@@ -996,3 +996,530 @@ collabcanvas/
 - PR #13: AI agent integration
 - PR #14: Multi-select and grouping
 - PR #15: Undo/redo system
+
+---
+
+## 🚀 NEW FEATURES - Phase 2 Development
+
+### PR #10: Fix Deep Locking System
+
+**Branch:** `fix/deep-locking`
+**Goal:** Ensure objects are locked on selection, not just on drag
+
+#### Tasks:
+
+- [ ] **10.1: Lock on Selection**
+  - Files to update: `src/contexts/CanvasContext.tsx`
+  - When user clicks to select object → immediately lock it
+  - Call `lockShape(shapeId, userId, userName)` on selection
+  - Update `selectShape()` function to include locking
+
+- [ ] **10.2: Auto-Select on Drag Attempt**
+  - Files to update: `src/components/Canvas/Shape.tsx`
+  - In `onDragStart`: Check if shape is selected
+  - If not selected → auto-select it first (which will lock it)
+  - Then allow drag to proceed
+  - Ensures "select before drag" behavior
+
+- [ ] **10.3: Prevent Selection of Locked Objects**
+  - Files to update: `src/components/Canvas/Shape.tsx`
+  - In `onClick` handler: Check if object is locked by another user
+  - If locked → show error toast/message
+  - If not locked → allow selection
+  - Visual feedback: cursor changes to "not-allowed" on hover
+
+- [ ] **10.4: Unlock on Deselection**
+  - Files to update: `src/contexts/CanvasContext.tsx`
+  - When user deselects (clicks background or selects another object) → unlock previous shape
+  - Call `unlockShape(shapeId)` on deselection
+  - Ensure only one object locked per user at a time
+
+- [ ] **10.5: Update Visual Lock Indicator**
+  - Files to update: `src/components/Canvas/Shape.tsx`
+  - Add small lock symbol (🔒) when object is selected/locked
+  - Position near top-left corner of shape
+  - Show user name who locked it
+  - Make it smaller and less intrusive than current lock indicator
+
+- [ ] **10.6: Test Multi-User Locking**
+  - Test: User A selects object → User B cannot select same object
+  - Test: User A deselects → User B can now select it
+  - Test: Auto-select on drag works correctly
+  - Test: Lock persists across network disconnect/reconnect
+
+---
+
+### PR #11: Add Line Shape Support
+
+**Branch:** `feature/lines`
+**Goal:** Implement line shapes with stroke properties
+
+#### Tasks:
+
+- [ ] **11.1: Add LineShape Type**
+  - Files to update: `src/types/index.ts`
+  - Add 'line' to ShapeType union
+  - Create LineShape interface with: x1, y1, x2, y2, stroke, strokeWidth
+  - Update Shape union type to include LineShape
+
+- [ ] **11.2: Implement Line Component**
+  - Files to update: `src/components/Canvas/Shape.tsx`
+  - Add Konva Line rendering in Shape component
+  - Support line selection with Transformer
+  - Handle line-specific transformations
+  - Apply stroke color and width
+
+- [ ] **11.3: Add Line Creation Tool**
+  - Files to update: `src/components/Canvas/ToolSelector.tsx`
+  - Add "Line" button to tool selector
+  - Files to update: `src/components/Canvas/Canvas.tsx`
+  - Implement click-to-place two points for line creation
+  - Click once for start point, click again for end point
+  - Show preview line while placing second point
+
+- [ ] **11.4: Add Line Properties Panel**
+  - Files to update: `src/components/Canvas/PropertiesPanel.tsx`
+  - Add line-specific controls: stroke color, stroke width
+  - Add endpoint position controls (x1, y1, x2, y2)
+  - Update when line is selected
+
+- [ ] **11.5: Update Canvas Service for Lines**
+  - Files to update: `src/services/canvas.ts`
+  - Ensure createShape, updateShape, deleteShape support LineShape
+  - Add validation for line-specific properties
+  - Test real-time sync with multiple users
+
+- [ ] **11.6: Test Lines with Multi-User**
+  - Test: Create line in browser A → appears in browser B
+  - Test: Move line endpoints → syncs in real-time
+  - Test: Lock line → other users see lock indicator
+  - Test: Delete line → removes from all users
+
+---
+
+### PR #12: Multi-Select Feature
+
+**Branch:** `feature/multi-select`
+**Goal:** Allow selecting and manipulating multiple shapes at once
+
+#### Tasks:
+
+- [ ] **12.1: Update CanvasContext for Multi-Select**
+  - Files to update: `src/contexts/CanvasContext.tsx`, `src/types/index.ts`
+  - Replace `selectedId: string | null` with `selectedIds: string[]`
+  - Update selectShape to handle array of IDs
+  - Add `addToSelection(id)` and `removeFromSelection(id)` methods
+  - Update all references to selectedId throughout codebase
+
+- [ ] **12.2: Implement Shift-Click Selection**
+  - Files to update: `src/components/Canvas/Shape.tsx`
+  - Detect shift key in onClick handler
+  - If shift pressed → add/remove from selection (toggle)
+  - If shift not pressed → replace selection (single select)
+  - Update visual feedback for multiple selected shapes
+
+- [ ] **12.3: Implement Drag-to-Select Rectangle**
+  - Files to update: `src/components/Canvas/Canvas.tsx`
+  - Add new interaction mode: "select" mode
+  - Click and drag on empty canvas → draw selection rectangle
+  - On mouse up → select all shapes within rectangle
+  - Show selection rectangle preview with dashed border
+
+- [ ] **12.4: Visual Feedback for Multi-Selection**
+  - Files to update: `src/components/Canvas/Shape.tsx`
+  - Show Transformer handles around all selected shapes
+  - Different color/style for multi-select vs single-select
+  - Show count badge: "3 shapes selected"
+
+- [ ] **12.5: Group Drag - Move Multiple Shapes**
+  - Files to update: `src/components/Canvas/Canvas.tsx`
+  - When dragging one selected shape → move all selected shapes
+  - Maintain relative positions between shapes
+  - Lock all selected shapes during drag
+  - Update all positions on drag end
+
+- [ ] **12.6: Group Delete**
+  - Files to update: `src/components/Canvas/Canvas.tsx`
+  - When Delete key pressed → delete all selected shapes
+  - Prompt confirmation for multiple deletes
+  - Cannot delete shapes locked by other users
+  - Show error if any locked shapes in selection
+
+- [ ] **12.7: Update Properties Panel for Multi-Select**
+  - Files to update: `src/components/Canvas/PropertiesPanel.tsx`
+  - Show common properties when multiple shapes selected
+  - Bulk edit: change color/stroke for all selected
+  - Show "Mixed" label when values differ across selection
+
+- [ ] **12.8: Test Multi-Select**
+  - Test: Shift-click to add shapes to selection
+  - Test: Drag rectangle to select multiple shapes
+  - Test: Move multiple shapes together
+  - Test: Delete multiple shapes at once
+  - Test: Multi-user locking with multi-select
+
+---
+
+### PR #13: Duplicate Feature
+
+**Branch:** `feature/duplicate`
+**Goal:** Allow duplicating shapes with keyboard shortcut
+
+#### Tasks:
+
+- [ ] **13.1: Add Duplicate Function to Context**
+  - Files to update: `src/contexts/CanvasContext.tsx`
+  - Create `duplicateShape(shapeId)` function
+  - Create copy of shape with new ID
+  - Offset position by (20, 20) to make duplicate visible
+  - Auto-name duplicates: "Rectangle 1 Copy", "Rectangle 1 Copy 2", etc.
+
+- [ ] **13.2: Add Keyboard Shortcut (Ctrl/Cmd+D)**
+  - Files to update: `src/components/Canvas/Canvas.tsx`
+  - Add keyboard event listener for Ctrl+D / Cmd+D
+  - Prevent default browser bookmark action
+  - Duplicate selected shape(s) when pressed
+  - Select the new duplicate after creation
+
+- [ ] **13.3: Add Duplicate Button to UI**
+  - Files to update: `src/components/Canvas/PropertiesPanel.tsx`
+  - Add "Duplicate" button in properties panel
+  - Show keyboard shortcut hint: "Ctrl+D"
+  - Disable if no shape selected
+
+- [ ] **13.4: Support Multi-Shape Duplication**
+  - Files to update: `src/contexts/CanvasContext.tsx`
+  - Create `duplicateShapes(shapeIds)` for multiple shapes
+  - Maintain relative positions between duplicates
+  - Apply same offset to all duplicates
+
+- [ ] **13.5: Test Duplication**
+  - Test: Ctrl+D duplicates selected shape
+  - Test: Duplicate button works
+  - Test: Duplicates sync to other users in real-time
+  - Test: Duplicate multiple selected shapes
+  - Test: Duplicate naming works correctly
+
+---
+
+### PR #14: AI Canvas Agent - Setup & Infrastructure
+
+**Branch:** `feature/ai-agent-setup`
+**Goal:** Set up OpenAI integration and AI service infrastructure
+
+#### Tasks:
+
+- [ ] **14.1: Install OpenAI SDK**
+  - Run: `npm install openai`
+  - Files to update: `package.json`
+  - Verify installation
+
+- [ ] **14.2: Create AI Service File**
+  - Files to create: `src/services/ai.ts`
+  - Import OpenAI SDK
+  - Initialize OpenAI client with API key from env
+  - Add error handling for missing API key
+  - Add TypeScript types for AI requests/responses
+
+- [ ] **14.3: Add Environment Variable**
+  - Add `VITE_OPENAI_API_KEY` to `.env` (user will provide key)
+  - Update `.env.example` with placeholder
+  - Files to update: `README.md` - document new env var
+
+- [ ] **14.4: Define AI Function Calling Schema**
+  - Files to update: `src/services/ai.ts`
+  - Define function schemas for OpenAI function calling:
+    - `createShape(type, x, y, width, height, color)`
+    - `createText(text, x, y, fontSize, color)`
+    - `moveShape(shapeId, x, y)`
+    - `resizeShape(shapeId, width, height)`
+    - `rotateShape(shapeId, degrees)`
+    - `getCanvasState()` - returns current shapes for AI context
+    - `arrangeShapes(shapeIds, direction, spacing)`
+    - `alignShapes(shapeIds, alignment)`
+    - `distributeShapes(shapeIds, direction)`
+
+- [ ] **14.5: Create AI Tool Executors**
+  - Files to update: `src/services/ai.ts`
+  - Implement executor functions for each tool
+  - Map function calls to canvas operations
+  - Return results in AI-friendly format
+  - Add error handling for invalid parameters
+
+- [ ] **14.6: Test AI Service Setup**
+  - Test: OpenAI client initializes correctly
+  - Test: Function schemas are valid
+  - Test: Tool executors can create/modify shapes
+  - Add unit tests for AI service
+
+---
+
+### PR #15: AI Canvas Agent - UI & Voice Input
+
+**Branch:** `feature/ai-ui`
+**Goal:** Build AI agent interface with chat and voice input
+
+#### Tasks:
+
+- [ ] **15.1: Create AIAgent Component**
+  - Files to create: `src/components/AI/AIAgent.tsx`
+  - Floating button with AI symbol (✨ or 🤖)
+  - Position: absolute, bottom-right corner of canvas
+  - Styled with Tailwind: rounded, shadow, hover effects
+  - Toggle chat panel on click
+
+- [ ] **15.2: Build Chat Panel UI**
+  - Files to update: `src/components/AI/AIAgent.tsx`
+  - Expandable panel (slides up from button)
+  - Chat history display (user messages + AI responses)
+  - Text input at bottom
+  - Submit button
+  - Close button to collapse panel
+
+- [ ] **15.3: Add Text Input for Commands**
+  - Files to update: `src/components/AI/AIAgent.tsx`
+  - Textarea for multi-line input
+  - Placeholder: "Ask AI to create shapes..."
+  - Submit on Enter (Shift+Enter for new line)
+  - Submit button next to input
+  - Clear input after submit
+
+- [ ] **15.4: Implement Voice Input**
+  - Files to update: `src/components/AI/AIAgent.tsx`
+  - Use Web Speech API (SpeechRecognition)
+  - Add microphone button next to text input
+  - Visual indicator when listening (red dot)
+  - Convert speech to text → populate text input
+  - Support continuous listening mode
+  - Handle browser compatibility (check for API support)
+
+- [ ] **15.5: Add Loading Indicator**
+  - Files to update: `src/components/AI/AIAgent.tsx`
+  - Show spinner/loading state when AI is processing
+  - Disable input while processing
+  - Show "AI is thinking..." message
+  - Animate AI button while processing
+
+- [ ] **15.6: Style Chat Messages**
+  - Files to update: `src/components/AI/AIAgent.tsx`
+  - User messages: right-aligned, blue background
+  - AI messages: left-aligned, gray background
+  - Show timestamps
+  - Show error messages in red
+  - Auto-scroll to latest message
+
+- [ ] **15.7: Test AI UI**
+  - Test: AI button toggles chat panel
+  - Test: Text input submits correctly
+  - Test: Voice input captures speech
+  - Test: Loading states work
+  - Test: Chat history displays correctly
+
+---
+
+### PR #16: AI Canvas Agent - Command Processing
+
+**Branch:** `feature/ai-commands`
+**Goal:** Process AI commands and execute canvas operations
+
+#### Tasks:
+
+- [ ] **16.1: Implement AI Chat Handler**
+  - Files to update: `src/services/ai.ts`
+  - Create `processAICommand(userMessage, canvasState)` function
+  - Send message + canvas state to OpenAI
+  - Include function calling tools in request
+  - Parse AI response and extract function calls
+  - Execute function calls in sequence
+  - Return AI text response + created shapes
+
+- [ ] **16.2: Implement Create Commands**
+  - Files to update: `src/services/ai.ts`
+  - **createShape**: Parse type, position, size, color from AI
+  - **createText**: Parse text content, position, formatting
+  - Execute via CanvasContext.addShape()
+  - Support batch creation (multiple shapes in one command)
+  - Examples:
+    - "Create a red rectangle at 100, 200"
+    - "Add a text that says 'Hello World'"
+
+- [ ] **16.3: Implement Manipulation Commands**
+  - Files to update: `src/services/ai.ts`
+  - **moveShape**: Parse shape selector + target position
+  - **resizeShape**: Parse shape selector + new dimensions
+  - **rotateShape**: Parse shape selector + rotation angle
+  - Support shape selection by: name, ID, color, or relative position
+  - Examples:
+    - "Move the blue rectangle to the center"
+    - "Make the circle twice as big"
+    - "Rotate the text 45 degrees"
+
+- [ ] **16.4: Implement Layout Commands**
+  - Files to update: `src/services/ai.ts`
+  - **arrangeShapes**: Arrange horizontally, vertically, or in grid
+  - **alignShapes**: Align left, center, right, top, middle, bottom
+  - **distributeShapes**: Space shapes evenly with equal gaps
+  - Examples:
+    - "Arrange these shapes in a horizontal row"
+    - "Create a 3x3 grid of squares"
+    - "Space these elements evenly"
+
+- [ ] **16.5: Implement Complex Commands**
+  - Files to update: `src/services/ai.ts`
+  - **Login Form**: Create username field, password field, submit button
+  - **Nav Bar**: Create horizontal menu items with labels
+  - **Card Layout**: Create title, image placeholder, description
+  - Use planning: AI breaks down into steps, executes sequentially
+  - Examples:
+    - "Create a login form"
+    - "Build a navigation bar with 4 menu items"
+    - "Make a card layout with title, image, and description"
+
+- [ ] **16.6: Test AI Commands**
+  - Test: Simple creation commands work
+  - Test: Manipulation commands modify existing shapes
+  - Test: Layout commands arrange multiple shapes
+  - Test: Complex commands generate full layouts
+  - Test: AI responds within 2 seconds for simple commands
+  - Test: Error handling for invalid commands
+
+---
+
+### PR #17: AI Canvas Agent - Multi-User & Notifications
+
+**Branch:** `feature/ai-multiuser`
+**Goal:** Enable multi-user AI collaboration with notifications
+
+#### Tasks:
+
+- [ ] **17.1: Broadcast AI-Generated Shapes**
+  - Files to update: `src/services/ai.ts`
+  - All AI-generated shapes use existing createShape/updateShape
+  - Firestore real-time sync broadcasts to all users automatically
+  - No additional broadcasting needed (already works!)
+  - Test: User A uses AI → User B sees shapes appear
+
+- [ ] **17.2: Create Notification System**
+  - Files to create: `src/components/Notifications/Toast.tsx`
+  - Toast notification component
+  - Position: top-right corner
+  - Auto-dismiss after 3 seconds
+  - Support success, error, info types
+  - Queue multiple notifications
+
+- [ ] **17.3: Add AI Usage Notifications**
+  - Files to update: `src/contexts/CanvasContext.tsx`
+  - Track when users execute AI commands
+  - Store in RTDB: `/ai-activity/global-canvas-v1/{userId}/{timestamp}`
+  - Subscribe to AI activity from other users
+  - Show toast: "User A used AI to create shapes"
+
+- [ ] **17.4: Handle Simultaneous AI Commands**
+  - Files to update: `src/services/ai.ts`
+  - Support multiple users using AI at same time
+  - Parallel execution: Each user's commands execute independently
+  - No queuing needed (Firestore handles conflicts)
+  - Test: User A and User B both use AI simultaneously
+
+- [ ] **17.5: Add AI Activity Indicator**
+  - Files to update: `src/components/Layout/Navbar.tsx`
+  - Show AI icon with pulse animation when anyone uses AI
+  - Display "AI Active" badge
+  - Show who is using AI in presence list
+
+- [ ] **17.6: Test Multi-User AI**
+  - Test: 2 users use AI simultaneously → both succeed
+  - Test: User A sees notification when User B uses AI
+  - Test: All users see same AI-generated results
+  - Test: AI activity indicator updates correctly
+  - Test: Notifications queue properly with multiple AI commands
+
+---
+
+### PR #18: AI Canvas Agent - Testing & Polish
+
+**Branch:** `feature/ai-polish`
+**Goal:** Comprehensive testing and polish for AI features
+
+#### Tasks:
+
+- [ ] **18.1: Test All 6+ Command Types**
+  - Test creation: createShape, createText
+  - Test manipulation: moveShape, resizeShape, rotateShape
+  - Test layout: arrangeShapes, alignShapes, distributeShapes
+  - Test complex: login forms, nav bars, card layouts
+  - Document successful commands in README
+
+- [ ] **18.2: Test AI Performance**
+  - Measure latency for simple commands (target: <2 seconds)
+  - Measure latency for complex commands (target: <5 seconds)
+  - Test with multiple concurrent users
+  - Optimize if needed (caching, parallel execution)
+
+- [ ] **18.3: Test Voice Input**
+  - Test microphone permission request
+  - Test speech-to-text accuracy
+  - Test continuous listening mode
+  - Test browser compatibility (Chrome, Firefox, Safari)
+  - Add fallback message if browser doesn't support voice
+
+- [ ] **18.4: Error Handling & Edge Cases**
+  - Test: Invalid commands → show helpful error message
+  - Test: API key missing → show setup instructions
+  - Test: Network errors → retry with exponential backoff
+  - Test: Rate limiting → queue commands or show warning
+  - Test: Ambiguous commands → ask for clarification
+
+- [ ] **18.5: Polish AI UI/UX**
+  - Add example commands in placeholder
+  - Add "Suggested Commands" section
+  - Improve loading animations
+  - Add sound effects (optional)
+  - Improve mobile responsiveness (if supporting mobile)
+
+- [ ] **18.6: Write AI Tests**
+  - Files to create: `tests/unit/services/ai.test.ts`
+  - Test function calling schema parsing
+  - Test tool executors
+  - Test command processing
+  - Test error handling
+  - Mock OpenAI responses for testing
+
+- [ ] **18.7: Update Documentation**
+  - Files to update: `README.md`
+  - Document all supported AI commands
+  - Add examples and screenshots
+  - Document voice input usage
+  - Add troubleshooting section
+
+---
+
+## 📋 Phase 2 Task Summary
+
+### Priority 1 - Core Fixes (Complete First)
+- [ ] PR #10: Fix Deep Locking System (6 tasks)
+
+### Priority 2 - Canvas Features
+- [ ] PR #11: Add Line Shape Support (6 tasks)
+- [ ] PR #12: Multi-Select Feature (8 tasks)
+- [ ] PR #13: Duplicate Feature (5 tasks)
+
+### Priority 3 - AI Agent
+- [ ] PR #14: AI Agent Setup & Infrastructure (6 tasks)
+- [ ] PR #15: AI UI & Voice Input (7 tasks)
+- [ ] PR #16: AI Command Processing (6 tasks)
+- [ ] PR #17: AI Multi-User & Notifications (6 tasks)
+- [ ] PR #18: AI Testing & Polish (7 tasks)
+
+**Total Phase 2 Tasks: 57 tasks**
+
+---
+
+## 🎯 Current Focus: PR #10 - Fix Deep Locking System
+
+**Next Steps:**
+1. Lock objects immediately on selection (not just on drag)
+2. Auto-select objects when user tries to drag them
+3. Prevent selection/movement of locked objects by other users
+4. Update lock indicator to be smaller and less intrusive
+5. Test multi-user locking behavior thoroughly
