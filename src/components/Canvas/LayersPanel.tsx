@@ -171,6 +171,26 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
         </div>
       );
     }
+    if (shape.type === 'line') {
+      return (
+        <div 
+          className="flex items-center justify-center flex-shrink-0"
+          style={{ width: '32px', height: '32px' }}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <line 
+              x1="4" 
+              y1="20" 
+              x2="20" 
+              y2="4" 
+              stroke={getStroke()} 
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          </svg>
+        </div>
+      );
+    }
     return null;
   };
 
@@ -254,6 +274,7 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
             const isDragging = draggedIndex === index;
             const isDragOver = dragOverIndex === index;
             const isLockedByOther = shape.isLocked && shape.lockedBy !== null && shape.lockedBy !== currentUserId;
+            const isLockedByMe = shape.isLocked && shape.lockedBy === currentUserId;
 
             return (
               <div
@@ -281,7 +302,9 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
                       ? 'opacity-50 cursor-not-allowed bg-gray-100 border-2 border-red-200' 
                       : 'cursor-pointer'
                     }
-                    ${isSelected 
+                    ${isSelected && isLockedByMe
+                      ? 'bg-green-50 border-2 border-green-500 shadow-sm' 
+                      : isSelected 
                       ? 'bg-blue-50 border-2 border-blue-500 shadow-sm' 
                       : !isLockedByOther ? 'bg-gray-50 border-2 border-transparent hover:bg-gray-100 hover:border-gray-200' : ''
                     }
@@ -308,7 +331,13 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
                   {/* Shape Name */}
                   {!isCollapsed && (
                     <div className="flex-1 min-w-0">
-                      <div className={`text-sm truncate ${isSelected ? 'font-medium text-blue-900' : 'text-gray-700'}`}>
+                      <div className={`text-sm truncate ${
+                        isSelected && isLockedByMe 
+                          ? 'font-medium text-green-900' 
+                          : isSelected 
+                          ? 'font-medium text-blue-900' 
+                          : 'text-gray-700'
+                      }`}>
                         {getShapeName(shape)}
                       </div>
                       {shape.type === 'rectangle' && (
@@ -324,7 +353,7 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
                     </div>
                   )}
 
-                  {/* Lock Indicator */}
+                  {/* Lock Indicator - Shows when OTHERS are controlling this object */}
                   {isLockedByOther && !isCollapsed && (
                     <div className="flex items-center gap-1 text-red-500 text-xs" title={`Locked by ${shape.lockedByName}`}>
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">

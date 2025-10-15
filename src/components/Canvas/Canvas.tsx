@@ -5,7 +5,7 @@
  */
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { Stage, Layer, Rect, Circle } from 'react-konva';
+import { Stage, Layer, Rect, Circle, Line } from 'react-konva';
 import type Konva from 'konva';
 import { useCanvasContext } from '../../contexts/CanvasContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -70,6 +70,7 @@ export function Canvas() {
   const {
     isDrawing,
     newShapePreview,
+    newLinePreview,
     handleDrawStart,
     handleDrawMove,
     handleDrawEnd,
@@ -294,6 +295,7 @@ export function Canvas() {
         selectedIds={selectedIds}
         onSelectShape={selectShape}
         onReorderShapes={reorderShapes}
+        currentUserId={currentUser?.uid}
       />
 
       {/* Main Canvas Area */}
@@ -434,7 +436,20 @@ export function Canvas() {
                     listening={false}
                   />
                 )}
-              </>
+                </>
+              )}
+
+            {/* Line preview while drawing */}
+            {isDrawing && newLinePreview && selectedTool === 'line' && (
+              <Line
+                points={[newLinePreview.x1, newLinePreview.y1, newLinePreview.x2, newLinePreview.y2]}
+                stroke={DEFAULT_SHAPE_STROKE}
+                strokeWidth={2}
+                lineCap="round"
+                dash={[5, 5]}
+                opacity={0.7}
+                listening={false}
+              />
             )}
 
             {/* Multiplayer Cursors - isolated to prevent Canvas re-renders */}
