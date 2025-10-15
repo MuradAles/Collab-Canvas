@@ -4,149 +4,119 @@
  * Optimized with React.memo to prevent unnecessary re-renders
  */
 
-import { useCallback, useState, useEffect, memo } from 'react';
-import { useDebouncedValue } from '../../hooks/useDebouncedValue';
-import type { Shape, RectangleShape, CircleShape, TextShape } from '../../types';
+import { useCallback, useState, useEffect, memo, useRef } from 'react';
+import type { Shape, TextShape } from '../../types';
 
 interface PropertiesPanelProps {
   selectedShape: Shape | null;
-  onUpdate: (updates: Partial<Shape>) => void;
+  onUpdate: (updates: Partial<Shape>, localOnly?: boolean) => void;
 }
 
 function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelProps) {
   const [hasFill, setHasFill] = useState(true);
   const [hasStroke, setHasStroke] = useState(true);
   
-  // Local state for input values (for immediate UI feedback)
-  const [localX, setLocalX] = useState(0);
-  const [localY, setLocalY] = useState(0);
-  const [localWidth, setLocalWidth] = useState(0);
-  const [localHeight, setLocalHeight] = useState(0);
-  const [localRadius, setLocalRadius] = useState(0);
-  const [localCornerRadius, setLocalCornerRadius] = useState(0);
-  const [localStrokeWidth, setLocalStrokeWidth] = useState(0);
-  const [localFontSize, setLocalFontSize] = useState(16);
+  // Local state for high-frequency inputs (colors, sliders)
+  const [localFillColor, setLocalFillColor] = useState('');
+  const [localStrokeColor, setLocalStrokeColor] = useState('');
   
-  // Debounced values (only update database after 300ms of no changes)
-  const debouncedX = useDebouncedValue(localX, 300);
-  const debouncedY = useDebouncedValue(localY, 300);
-  const debouncedWidth = useDebouncedValue(localWidth, 300);
-  const debouncedHeight = useDebouncedValue(localHeight, 300);
-  const debouncedRadius = useDebouncedValue(localRadius, 300);
-  const debouncedCornerRadius = useDebouncedValue(localCornerRadius, 300);
-  const debouncedStrokeWidth = useDebouncedValue(localStrokeWidth, 300);
-  const debouncedFontSize = useDebouncedValue(localFontSize, 300);
+  // Refs for throttling updates
+  const rafIdRef = useRef<number | null>(null);
+  const pendingUpdateRef = useRef<Partial<Shape> | null>(null);
 
-  // Sync local state when shape changes
+  // Sync visibility toggles and colors when shape changes
   useEffect(() => {
     if (!selectedShape) return;
     
-    setLocalX(Math.round(selectedShape.x));
-    setLocalY(Math.round(selectedShape.y));
-    
-    if (selectedShape.type === 'rectangle') {
-      setLocalWidth(Math.round(selectedShape.width));
-      setLocalHeight(Math.round(selectedShape.height));
-      setLocalCornerRadius(selectedShape.cornerRadius);
-      setLocalStrokeWidth(selectedShape.strokeWidth);
+    if (selectedShape.type === 'rectangle' || selectedShape.type === 'circle') {
       setHasFill(selectedShape.fill !== 'transparent');
       setHasStroke(selectedShape.stroke !== 'transparent');
-    } else if (selectedShape.type === 'circle') {
-      setLocalRadius(Math.round(selectedShape.radius));
-      setLocalStrokeWidth(selectedShape.strokeWidth);
-      setHasFill(selectedShape.fill !== 'transparent');
-      setHasStroke(selectedShape.stroke !== 'transparent');
+      setLocalFillColor(selectedShape.fill);
+      setLocalStrokeColor(selectedShape.stroke);
     } else if (selectedShape.type === 'text') {
-      setLocalFontSize(selectedShape.fontSize);
+      setHasFill(selectedShape.fill !== 'transparent');
+      setLocalFillColor(selectedShape.fill);
     }
-  }, [selectedShape?.id]);
-  
-  // Update database when debounced values change
-  useEffect(() => {
-    if (!selectedShape) return;
-    if (Math.round(selectedShape.x) !== debouncedX) {
-      onUpdate({ x: debouncedX });
-    }
-  }, [debouncedX]);
-  
-  useEffect(() => {
-    if (!selectedShape) return;
-    if (Math.round(selectedShape.y) !== debouncedY) {
-      onUpdate({ y: debouncedY });
-    }
-  }, [debouncedY]);
-  
-  useEffect(() => {
-    if (!selectedShape || selectedShape.type !== 'rectangle') return;
-    if (Math.round(selectedShape.width) !== debouncedWidth) {
-      onUpdate({ width: debouncedWidth });
-    }
-  }, [debouncedWidth]);
-  
-  useEffect(() => {
-    if (!selectedShape || selectedShape.type !== 'rectangle') return;
-    if (Math.round(selectedShape.height) !== debouncedHeight) {
-      onUpdate({ height: debouncedHeight });
-    }
-  }, [debouncedHeight]);
-  
-  useEffect(() => {
-    if (!selectedShape || selectedShape.type !== 'circle') return;
-    if (Math.round(selectedShape.radius) !== debouncedRadius) {
-      onUpdate({ radius: debouncedRadius });
-    }
-  }, [debouncedRadius]);
-  
-  useEffect(() => {
-    if (!selectedShape || selectedShape.type !== 'rectangle') return;
-    if (selectedShape.cornerRadius !== debouncedCornerRadius) {
-      onUpdate({ cornerRadius: debouncedCornerRadius });
-    }
-  }, [debouncedCornerRadius]);
-  
-  useEffect(() => {
-    if (!selectedShape || (selectedShape.type !== 'rectangle' && selectedShape.type !== 'circle')) return;
-    const currentStrokeWidth = (selectedShape as RectangleShape | CircleShape).strokeWidth;
-    if (currentStrokeWidth !== debouncedStrokeWidth) {
-      onUpdate({ strokeWidth: debouncedStrokeWidth });
-    }
-  }, [debouncedStrokeWidth]);
-  
-  useEffect(() => {
-    if (!selectedShape || selectedShape.type !== 'text') return;
-    if (selectedShape.fontSize !== debouncedFontSize) {
-      onUpdate({ fontSize: debouncedFontSize });
-    }
-  }, [debouncedFontSize]);
+  }, [selectedShape]);
 
-  // Handle fill color change - apply immediately
+  // Throttled update using requestAnimationFrame for smooth 60fps updates
+  const throttledUpdate = useCallback((updates: Partial<Shape>) => {
+    // Cancel any pending RAF
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+    }
+    
+    // Merge with any pending updates
+    pendingUpdateRef.current = {
+      ...pendingUpdateRef.current,
+      ...updates
+    };
+    
+    // Schedule update on next frame
+    rafIdRef.current = requestAnimationFrame(() => {
+      if (pendingUpdateRef.current) {
+        onUpdate(pendingUpdateRef.current, true);
+        pendingUpdateRef.current = null;
+      }
+      rafIdRef.current = null;
+    });
+  }, [onUpdate]);
+
+  // Cleanup RAF on unmount
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+    };
+  }, []);
+
+  // Handle fill color change - update local state and throttle canvas update
   const handleFillColorChange = useCallback((color: string) => {
-    onUpdate({ fill: color });
-  }, [onUpdate]);
+    setLocalFillColor(color);
+    throttledUpdate({ fill: color });
+  }, [throttledUpdate]);
+  
+  const handleFillColorBlur = useCallback(() => {
+    // Cancel any pending updates and sync final value to Firebase
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+    pendingUpdateRef.current = null;
+    onUpdate({ fill: localFillColor }, false);
+  }, [onUpdate, localFillColor]);
 
-  // Handle stroke color change - apply immediately
+  // Handle stroke color change - update local state and throttle canvas update
   const handleStrokeColorChange = useCallback((color: string) => {
-    onUpdate({ stroke: color });
-  }, [onUpdate]);
+    setLocalStrokeColor(color);
+    throttledUpdate({ stroke: color });
+  }, [throttledUpdate]);
+  
+  const handleStrokeColorBlur = useCallback(() => {
+    // Cancel any pending updates and sync final value to Firebase
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+    pendingUpdateRef.current = null;
+    onUpdate({ stroke: localStrokeColor }, false);
+  }, [onUpdate, localStrokeColor]);
 
   // Handle fill toggle
   const handleFillToggle = useCallback((enabled: boolean) => {
     setHasFill(enabled);
-    if (enabled) {
-      onUpdate({ fill: '#e0e0e0' });
-    } else {
-      onUpdate({ fill: 'transparent' });
-    }
+    const newColor = enabled ? '#e0e0e0' : 'transparent';
+    setLocalFillColor(newColor);
+    onUpdate({ fill: newColor }, false); // Sync immediately
   }, [onUpdate]);
 
   // Handle stroke toggle
   const handleStrokeToggle = useCallback((enabled: boolean) => {
     setHasStroke(enabled);
-    if (enabled) {
-      onUpdate({ stroke: '#000000' });
-    } else {
-      onUpdate({ stroke: 'transparent' });
-    }
+    const newColor = enabled ? '#000000' : 'transparent';
+    setLocalStrokeColor(newColor);
+    onUpdate({ stroke: newColor }, false); // Sync immediately
   }, [onUpdate]);
 
   if (!selectedShape) {
@@ -193,8 +163,9 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
               <label className="text-xs text-gray-600 mb-1 block">X</label>
               <input
                 type="number"
-                value={localX}
-                onChange={(e) => setLocalX(parseInt(e.target.value) || 0)}
+                value={Math.round(selectedShape.x)}
+                onChange={(e) => onUpdate({ x: parseInt(e.target.value) || 0 }, true)}
+                onBlur={(e) => onUpdate({ x: parseInt(e.target.value) || 0 }, false)}
                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -202,8 +173,9 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
               <label className="text-xs text-gray-600 mb-1 block">Y</label>
               <input
                 type="number"
-                value={localY}
-                onChange={(e) => setLocalY(parseInt(e.target.value) || 0)}
+                value={Math.round(selectedShape.y)}
+                onChange={(e) => onUpdate({ y: parseInt(e.target.value) || 0 }, true)}
+                onBlur={(e) => onUpdate({ y: parseInt(e.target.value) || 0 }, false)}
                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -221,8 +193,9 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
                   <label className="text-xs text-gray-600 mb-1 block">W</label>
                   <input
                     type="number"
-                    value={localWidth}
-                    onChange={(e) => setLocalWidth(parseInt(e.target.value) || 10)}
+                    value={Math.round(selectedShape.width)}
+                    onChange={(e) => onUpdate({ width: parseInt(e.target.value) || 10 }, true)}
+                    onBlur={(e) => onUpdate({ width: parseInt(e.target.value) || 10 }, false)}
                     className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -230,8 +203,9 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
                   <label className="text-xs text-gray-600 mb-1 block">H</label>
                   <input
                     type="number"
-                    value={localHeight}
-                    onChange={(e) => setLocalHeight(parseInt(e.target.value) || 10)}
+                    value={Math.round(selectedShape.height)}
+                    onChange={(e) => onUpdate({ height: parseInt(e.target.value) || 10 }, true)}
+                    onBlur={(e) => onUpdate({ height: parseInt(e.target.value) || 10 }, false)}
                     className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -246,16 +220,19 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
                   type="range"
                   min="0"
                   max="100"
-                  value={localCornerRadius}
-                  onChange={(e) => setLocalCornerRadius(parseInt(e.target.value))}
+                  value={selectedShape.cornerRadius}
+                  onChange={(e) => throttledUpdate({ cornerRadius: parseInt(e.target.value) })}
+                  onMouseUp={(e) => onUpdate({ cornerRadius: parseInt((e.target as HTMLInputElement).value) }, false)}
+                  onTouchEnd={(e) => onUpdate({ cornerRadius: parseInt((e.target as HTMLInputElement).value) }, false)}
                   className="flex-1"
                 />
                 <input
                   type="number"
                   min="0"
                   max="500"
-                  value={localCornerRadius}
-                  onChange={(e) => setLocalCornerRadius(parseInt(e.target.value) || 0)}
+                  value={selectedShape.cornerRadius}
+                  onChange={(e) => throttledUpdate({ cornerRadius: parseInt(e.target.value) || 0 })}
+                  onBlur={(e) => onUpdate({ cornerRadius: parseInt(e.target.value) || 0 }, false)}
                   className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -279,14 +256,16 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
                 <div className="flex items-center gap-2">
                   <input
                     type="color"
-                    value={selectedShape.fill}
+                    value={localFillColor}
                     onChange={(e) => handleFillColorChange(e.target.value)}
+                    onBlur={handleFillColorBlur}
                     className="w-12 h-10 rounded border border-gray-300 cursor-pointer"
                   />
                   <input
                     type="text"
-                    value={selectedShape.fill}
+                    value={localFillColor}
                     onChange={(e) => handleFillColorChange(e.target.value)}
+                    onBlur={handleFillColorBlur}
                     className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono uppercase"
                     placeholder="#000000"
                   />
@@ -315,14 +294,16 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
                 <div className="flex items-center gap-2">
                   <input
                     type="color"
-                    value={(selectedShape as RectangleShape).stroke}
+                    value={localStrokeColor}
                     onChange={(e) => handleStrokeColorChange(e.target.value)}
+                    onBlur={handleStrokeColorBlur}
                     className="w-12 h-10 rounded border border-gray-300 cursor-pointer"
                   />
                   <input
                     type="text"
-                    value={(selectedShape as RectangleShape).stroke}
+                    value={localStrokeColor}
                     onChange={(e) => handleStrokeColorChange(e.target.value)}
+                    onBlur={handleStrokeColorBlur}
                     className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono uppercase"
                     placeholder="#000000"
                   />
@@ -342,16 +323,19 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
                     type="range"
                     min="0"
                     max="50"
-                    value={localStrokeWidth}
-                    onChange={(e) => setLocalStrokeWidth(parseInt(e.target.value))}
+                    value={selectedShape.strokeWidth}
+                    onChange={(e) => throttledUpdate({ strokeWidth: parseInt(e.target.value) })}
+                    onMouseUp={(e) => onUpdate({ strokeWidth: parseInt((e.target as HTMLInputElement).value) }, false)}
+                    onTouchEnd={(e) => onUpdate({ strokeWidth: parseInt((e.target as HTMLInputElement).value) }, false)}
                     className="flex-1"
                   />
                   <input
                     type="number"
                     min="0"
                     max="200"
-                    value={localStrokeWidth}
-                    onChange={(e) => setLocalStrokeWidth(parseInt(e.target.value) || 0)}
+                    value={selectedShape.strokeWidth}
+                    onChange={(e) => throttledUpdate({ strokeWidth: parseInt(e.target.value) || 0 })}
+                    onBlur={(e) => onUpdate({ strokeWidth: parseInt(e.target.value) || 0 }, false)}
                     className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -369,8 +353,9 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
               <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Radius</div>
               <input
                 type="number"
-                value={localRadius}
-                onChange={(e) => setLocalRadius(parseInt(e.target.value) || 10)}
+                value={Math.round(selectedShape.radius)}
+                onChange={(e) => onUpdate({ radius: parseInt(e.target.value) || 10 }, true)}
+                onBlur={(e) => onUpdate({ radius: parseInt(e.target.value) || 10 }, false)}
                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -393,14 +378,16 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
                 <div className="flex items-center gap-2">
                   <input
                     type="color"
-                    value={(selectedShape as CircleShape).fill}
+                    value={localFillColor}
                     onChange={(e) => handleFillColorChange(e.target.value)}
+                    onBlur={handleFillColorBlur}
                     className="w-12 h-10 rounded border border-gray-300 cursor-pointer"
                   />
                   <input
                     type="text"
-                    value={(selectedShape as CircleShape).fill}
+                    value={localFillColor}
                     onChange={(e) => handleFillColorChange(e.target.value)}
+                    onBlur={handleFillColorBlur}
                     className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono uppercase"
                     placeholder="#000000"
                   />
@@ -429,14 +416,16 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
                 <div className="flex items-center gap-2">
                   <input
                     type="color"
-                    value={(selectedShape as CircleShape).stroke}
+                    value={localStrokeColor}
                     onChange={(e) => handleStrokeColorChange(e.target.value)}
+                    onBlur={handleStrokeColorBlur}
                     className="w-12 h-10 rounded border border-gray-300 cursor-pointer"
                   />
                   <input
                     type="text"
-                    value={(selectedShape as CircleShape).stroke}
+                    value={localStrokeColor}
                     onChange={(e) => handleStrokeColorChange(e.target.value)}
+                    onBlur={handleStrokeColorBlur}
                     className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono uppercase"
                     placeholder="#000000"
                   />
@@ -456,16 +445,19 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
                     type="range"
                     min="0"
                     max="50"
-                    value={localStrokeWidth}
-                    onChange={(e) => setLocalStrokeWidth(parseInt(e.target.value))}
+                    value={selectedShape.strokeWidth}
+                    onChange={(e) => throttledUpdate({ strokeWidth: parseInt(e.target.value) })}
+                    onMouseUp={(e) => onUpdate({ strokeWidth: parseInt((e.target as HTMLInputElement).value) }, false)}
+                    onTouchEnd={(e) => onUpdate({ strokeWidth: parseInt((e.target as HTMLInputElement).value) }, false)}
                     className="flex-1"
                   />
                   <input
                     type="number"
                     min="0"
                     max="200"
-                    value={localStrokeWidth}
-                    onChange={(e) => setLocalStrokeWidth(parseInt(e.target.value) || 0)}
+                    value={selectedShape.strokeWidth}
+                    onChange={(e) => throttledUpdate({ strokeWidth: parseInt(e.target.value) || 0 })}
+                    onBlur={(e) => onUpdate({ strokeWidth: parseInt(e.target.value) || 0 }, false)}
                     className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -483,7 +475,8 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
               <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Text</div>
               <textarea
                 value={(selectedShape as TextShape).text}
-                onChange={(e) => onUpdate({ text: e.target.value })}
+                onChange={(e) => onUpdate({ text: e.target.value }, true)}
+                onBlur={(e) => onUpdate({ text: e.target.value }, false)}
                 rows={3}
                 className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 placeholder="Enter text..."
@@ -498,16 +491,19 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
                   type="range"
                   min="8"
                   max="72"
-                  value={localFontSize}
-                  onChange={(e) => setLocalFontSize(parseInt(e.target.value))}
+                  value={selectedShape.fontSize}
+                  onChange={(e) => throttledUpdate({ fontSize: parseInt(e.target.value) })}
+                  onMouseUp={(e) => onUpdate({ fontSize: parseInt((e.target as HTMLInputElement).value) }, false)}
+                  onTouchEnd={(e) => onUpdate({ fontSize: parseInt((e.target as HTMLInputElement).value) }, false)}
                   className="flex-1"
                 />
                 <input
                   type="number"
                   min="8"
                   max="200"
-                  value={localFontSize}
-                  onChange={(e) => setLocalFontSize(parseInt(e.target.value) || 16)}
+                  value={selectedShape.fontSize}
+                  onChange={(e) => throttledUpdate({ fontSize: parseInt(e.target.value) || 16 })}
+                  onBlur={(e) => onUpdate({ fontSize: parseInt(e.target.value) || 16 }, false)}
                   className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -531,14 +527,16 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
                 <div className="flex items-center gap-2">
                   <input
                     type="color"
-                    value={(selectedShape as TextShape).fill}
+                    value={localFillColor}
                     onChange={(e) => handleFillColorChange(e.target.value)}
+                    onBlur={handleFillColorBlur}
                     className="w-12 h-10 rounded border border-gray-300 cursor-pointer"
                   />
                   <input
                     type="text"
-                    value={(selectedShape as TextShape).fill}
+                    value={localFillColor}
                     onChange={(e) => handleFillColorChange(e.target.value)}
+                    onBlur={handleFillColorBlur}
                     className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono uppercase"
                     placeholder="#000000"
                   />
@@ -563,3 +561,5 @@ export const PropertiesPanel = memo(PropertiesPanelComponent, (prevProps, nextPr
     JSON.stringify(prevProps.selectedShape) === JSON.stringify(nextProps.selectedShape)
   );
 });
+
+

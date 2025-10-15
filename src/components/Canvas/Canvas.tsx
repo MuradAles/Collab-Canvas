@@ -180,9 +180,9 @@ export function Canvas() {
    * Handle property updates from panel
    */
   const handlePropertyUpdate = useCallback(
-    (updates: ShapeUpdate) => {
+    (updates: ShapeUpdate, localOnly?: boolean) => {
       if (selectedId) {
-        updateShape(selectedId, updates);
+        updateShape(selectedId, updates, localOnly);
       }
     },
     [selectedId, updateShape]

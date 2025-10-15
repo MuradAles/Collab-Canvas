@@ -50,6 +50,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
   const [loading, setLoading] = useState(true);
   const [onlineUsers, setOnlineUsers] = useState<PresenceData[]>([]);
   const [dragPositions, setDragPositions] = useState<Map<string, DragPosition>>(new Map());
+  const [localUpdates, setLocalUpdates] = useState<Map<string, Partial<Shape>>>(new Map());
   const { currentUser } = useAuth();
   
   // Counter for shape names (increments and never resets)
@@ -87,6 +88,38 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
         unsubscribeShapes = subscribeToShapes((updatedShapes) => {
           setShapes(updatedShapes);
           setLoading(false);
+          
+          // Clear local updates for shapes that have been synced to Firestore
+          // This prevents the flash by only clearing after Firebase confirms the update
+          setLocalUpdates((prev) => {
+            const newMap = new Map(prev);
+            updatedShapes.forEach((shape) => {
+              // If we have local updates for this shape, check if Firestore has caught up
+              const localUpdate = prev.get(shape.id);
+              if (localUpdate) {
+                // Clear local updates if Firestore data matches our local changes
+                // (with some tolerance for floating point precision)
+                let allMatch = true;
+                for (const key in localUpdate) {
+                  const localVal = localUpdate[key as keyof typeof localUpdate];
+                  const firestoreVal = shape[key as keyof typeof shape];
+                  if (typeof localVal === 'number' && typeof firestoreVal === 'number') {
+                    if (Math.abs(localVal - firestoreVal) > 0.01) {
+                      allMatch = false;
+                      break;
+                    }
+                  } else if (localVal !== firestoreVal) {
+                    allMatch = false;
+                    break;
+                  }
+                }
+                if (allMatch) {
+                  newMap.delete(shape.id);
+                }
+              }
+            });
+            return newMap;
+          });
           
           // Update shape counters based on existing shapes
           const counters = { rectangle: 0, circle: 0, text: 0 };
@@ -200,19 +233,34 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
 
   /**
    * Updates an existing shape
-   * Syncs to Firestore
+   * @param id - Shape ID to update
+   * @param updates - Partial shape updates
+   * @param localOnly - If true, only updates local state (no Firebase sync). If false/undefined, syncs to Firebase.
    */
   const updateShape = useCallback(
-    async (id: string, updates: ShapeUpdate) => {
+    async (id: string, updates: ShapeUpdate, localOnly = false) => {
       if (!currentUser) {
         throw new Error('Must be logged in to update shapes');
       }
 
-      try {
-        await updateShapeInFirestore(id, updates);
-      } catch (error) {
-        console.error('Failed to update shape:', error);
-        throw error;
+      // Always update local state first for instant feedback
+      setLocalUpdates((prev) => {
+        const newMap = new Map(prev);
+        const existing = newMap.get(id) || {};
+        newMap.set(id, { ...existing, ...updates });
+        return newMap;
+      });
+
+      // If not local-only, also sync to Firebase (but keep local updates for smooth transition)
+      if (!localOnly) {
+        try {
+          await updateShapeInFirestore(id, updates);
+          // Don't clear local updates immediately - let Firestore subscription handle it
+          // This prevents the flash when the update is in-flight
+        } catch (error) {
+          console.error('Failed to update shape:', error);
+          throw error;
+        }
       }
     },
     [currentUser]
@@ -317,13 +365,22 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
     [currentUser]
   );
 
-  // Merge real-time drag positions with persistent shapes for ultra-smooth updates
+  // Merge real-time drag positions and local updates with persistent shapes
   const shapesWithDragPositions = shapes.map(shape => {
+    let mergedShape: Shape = { ...shape };
+    
+    // First, apply local updates (optimistic updates for properties panel)
+    const localUpdate = localUpdates.get(shape.id);
+    if (localUpdate) {
+      mergedShape = { ...mergedShape, ...localUpdate } as Shape;
+    }
+    
+    // Then, apply drag positions (real-time RTDB updates from other users)
     const dragPos = dragPositions.get(shape.id);
     if (dragPos && dragPos.draggingBy !== currentUser?.uid) {
       // Apply real-time position, rotation, and dimensions from RTDB if being transformed by another user
       const updates: any = {
-        ...shape,
+        ...mergedShape,
         x: dragPos.x,
         y: dragPos.y,
         isDragging: true,
@@ -337,18 +394,18 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       }
       
       // Include dimensions if they're being updated (for resize operations)
-      if (shape.type === 'rectangle') {
+      if (mergedShape.type === 'rectangle') {
         if (dragPos.width !== undefined) {
           updates.width = dragPos.width;
         }
         if (dragPos.height !== undefined) {
           updates.height = dragPos.height;
         }
-      } else if (shape.type === 'circle') {
+      } else if (mergedShape.type === 'circle') {
         if (dragPos.radius !== undefined) {
           updates.radius = dragPos.radius;
         }
-      } else if (shape.type === 'text') {
+      } else if (mergedShape.type === 'text') {
         if (dragPos.width !== undefined) {
           updates.width = dragPos.width;
         }
@@ -359,7 +416,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       
       return updates;
     }
-    return shape;
+    return mergedShape;
   });
 
   const value: CanvasContextType = {
