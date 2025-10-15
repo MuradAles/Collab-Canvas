@@ -89,7 +89,7 @@ export interface CanvasDocument {
 
 export interface CanvasState {
   shapes: Shape[];
-  selectedId: string | null;
+  selectedIds: string[];
   loading: boolean;
 }
 
@@ -157,12 +157,12 @@ export interface OnlineUser {
 
 export interface CanvasContextType {
   shapes: Shape[];
-  selectedId: string | null;
+  selectedIds: string[];
   loading: boolean;
   addShape: (shape: Omit<Shape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>) => Promise<void>;
   updateShape: (id: string, updates: ShapeUpdate, localOnly?: boolean) => Promise<void>;
   deleteShape: (id: string) => Promise<void>;
-  selectShape: (id: string | null) => void;
+  selectShape: (id: string | null, addToSelection?: boolean) => void;
   lockShape: (id: string, userId: string, userName: string) => Promise<void>;
   unlockShape: (id: string) => Promise<void>;
   reorderShapes: (newOrder: Shape[]) => void;

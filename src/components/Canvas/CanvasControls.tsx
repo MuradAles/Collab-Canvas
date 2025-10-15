@@ -1,9 +1,10 @@
 /**
  * Canvas Controls Component
- * Provides UI controls for zoom in, zoom out, and reset view
+ * Provides UI controls for zoom in, zoom out, reset view, and tutorial
  */
 
 import { MIN_ZOOM, MAX_ZOOM } from '../../utils/constants';
+import { Tutorial } from './Tutorial';
 
 interface CanvasControlsProps {
   onZoomIn: () => void;
@@ -95,6 +96,12 @@ export function CanvasControls({
       <div className="text-xs text-center text-gray-600 font-medium mt-1">
         {(currentZoom * 100).toFixed(0)}%
       </div>
+
+      {/* Divider */}
+      <div className="border-t border-gray-200"></div>
+
+      {/* Tutorial Button */}
+      <Tutorial />
     </div>
   );
 }

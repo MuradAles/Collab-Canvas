@@ -41,7 +41,7 @@ interface CanvasProviderProps {
 
 export function CanvasProvider({ children }: CanvasProviderProps) {
   const [shapes, setShapes] = useState<Shape[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [dragPositions, setDragPositions] = useState<Map<string, DragPosition>>(new Map());
   const [localUpdates, setLocalUpdates] = useState<Map<string, Partial<Shape>>>(new Map());
@@ -61,10 +61,19 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
   // Store current user ID in a ref for cleanup (persists even after currentUser becomes null)
   const currentUserIdRef = useRef<string | null>(null);
   
+  // CRITICAL FIX: Store selectedIds in a ref to avoid stale closure issues
+  // When clicking shapes quickly, the callback might have old selectedIds captured
+  const selectedIdsRef = useRef<string[]>(selectedIds);
+  
   // Update the ref whenever currentUser changes
   useEffect(() => {
     currentUserIdRef.current = currentUser?.uid || null;
   }, [currentUser]);
+  
+  // Update selectedIds ref whenever it changes
+  useEffect(() => {
+    selectedIdsRef.current = selectedIds;
+  }, [selectedIds]);
 
   // ============================================================================
   // Initialize Canvas and Subscribe to Real-Time Updates
@@ -225,8 +234,8 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
 
       try {
         await createShapeInFirestore(newShape);
-        // Auto-select the newly created shape
-        setSelectedId(newShape.id);
+        // Auto-select the newly created shape (single selection)
+        setSelectedIds([newShape.id]);
       } catch (error) {
         console.error('Failed to add shape:', error);
         throw error;
@@ -282,8 +291,8 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
 
       try {
         await deleteShapeInFirestore(id, currentUser.uid);
-        // Deselect if the deleted shape was selected
-        setSelectedId((prev) => (prev === id ? null : prev));
+        // Remove from selection if it was selected
+        setSelectedIds((prev) => prev.filter(shapeId => shapeId !== id));
       } catch (error) {
         console.error('Failed to delete shape:', error);
         // Show user-friendly error message
@@ -295,39 +304,12 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
     [currentUser]
   );
 
-  /**
-   * Sets the selected shape ID
-   */
-  const selectShape = useCallback((id: string | null) => {
-    setSelectedId(id);
-  }, []);
-
-  /**
-   * Reorders shapes (for z-index management)
-   * Syncs to Firestore
-   */
-  const reorderShapes = useCallback(
-    async (newOrder: Shape[]) => {
-      if (!currentUser) {
-        throw new Error('Must be logged in to reorder shapes');
-      }
-
-      try {
-        await reorderShapesInFirestore(newOrder);
-      } catch (error) {
-        console.error('Failed to reorder shapes:', error);
-        throw error;
-      }
-    },
-    [currentUser]
-  );
-
   // ============================================================================
-  // Shape Locking (for drag operations)
+  // Shape Locking (for selection and drag operations)
   // ============================================================================
 
   /**
-   * Locks a shape when user starts dragging
+   * Locks a shape when user selects or starts dragging
    * Syncs to Firestore and sets up auto-release
    */
   const lockShape = useCallback(
@@ -351,7 +333,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
   );
 
   /**
-   * Unlocks a shape when user stops dragging
+   * Unlocks a shape when user deselects or stops dragging
    * Syncs to Firestore
    */
   const unlockShape = useCallback(
@@ -363,7 +345,123 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       try {
         await unlockShapeInFirestore(id, currentUser.uid);
       } catch (error) {
-        console.error('Failed to unlock shape:', error);
+        console.error('Failed to unlock shape:', id, error);
+        throw error;
+      }
+    },
+    [currentUser]
+  );
+
+  /**
+   * Sets the selected shape IDs
+   * NEW (PR #12): Support multi-selection with Shift+Click
+   * Locks shapes on selection, unlocks deselected shapes
+   * FIXED: Ensure locked shapes remain selected when clicking on other objects
+   * FIXED: Use ref to avoid stale closure when clicking shapes quickly
+   */
+  const selectShape = useCallback(async (id: string | null, addToSelection = false) => {
+    // CRITICAL: Read from ref to get LATEST selectedIds, not stale closure value
+    const currentSelectedIds = selectedIdsRef.current;
+    
+    if (!currentUser) return;
+
+    // If clicking background (id = null), deselect all
+    if (id === null) {
+      const shapesToUnlock = [...currentSelectedIds];
+      
+      // Update state immediately
+      setSelectedIds([]);
+      
+      // Unlock all shapes in background
+      const unlockPromises = shapesToUnlock.map(async shapeId => {
+        try {
+          await unlockShape(shapeId);
+        } catch (error) {
+          console.error('Failed to unlock shape:', shapeId, error);
+        }
+      });
+      
+      Promise.all(unlockPromises).catch(console.error);
+      return;
+    }
+
+    // Check if shape is locked by another user BEFORE changing selection
+    const shape = shapes.find(s => s.id === id);
+    if (shape?.isLocked && shape.lockedBy && shape.lockedBy !== currentUser.uid) {
+      // DO NOT change selection - shape is locked by another user
+      return;
+    }
+
+    // If addToSelection (Shift+Click)
+    if (addToSelection) {
+      const isAlreadySelected = currentSelectedIds.includes(id);
+      
+      if (isAlreadySelected) {
+        // Deselect this shape (remove from selection)
+        setSelectedIds(prev => prev.filter(shapeId => shapeId !== id));
+        // Then unlock in background
+        unlockShape(id).catch(error => {
+          console.error('Failed to unlock shape:', id, error);
+        });
+      } else {
+        // Add to selection - optimistic update
+        setSelectedIds(prev => [...prev, id]);
+        // Then lock in background
+        lockShape(id, currentUser.uid, currentUser.displayName || 'Unknown')
+          .catch((error) => {
+            console.error('Failed to lock shape:', error);
+            // If lock fails, remove from selection
+            setSelectedIds(prev => prev.filter(shapeId => shapeId !== id));
+          });
+      }
+    } else {
+      // Normal selection (replace current selection) - optimistic update
+      const previousSelection = [...currentSelectedIds];
+      
+      // Update selection state IMMEDIATELY for instant visual feedback
+      setSelectedIds([id]);
+      
+      // Then lock/unlock in background
+      const needsLocking = !previousSelection.includes(id);
+      
+      if (needsLocking) {
+        lockShape(id, currentUser.uid, currentUser.displayName || 'Unknown')
+          .catch((error) => {
+            console.error('Failed to lock shape:', error);
+            // If lock fails, revert to previous selection
+            setSelectedIds(previousSelection);
+          });
+      }
+      
+      // Unlock ALL previous shapes that are not the new selection
+      const shapesToUnlock = previousSelection.filter(shapeId => shapeId !== id);
+      if (shapesToUnlock.length > 0) {
+        shapesToUnlock.forEach(async shapeId => {
+          try {
+            await unlockShape(shapeId);
+          } catch (error) {
+            console.error('Failed to unlock shape:', shapeId, error);
+          }
+        });
+      }
+    }
+  }, [currentUser, shapes, lockShape, unlockShape]);
+
+  /**
+   * Reorders shapes (for z-index management)
+   * Syncs to Firestore
+   */
+  const reorderShapes = useCallback(
+    async (newOrder: Shape[]) => {
+      if (!currentUser) {
+        throw new Error('Must be logged in to reorder shapes');
+      }
+
+      try {
+        await reorderShapesInFirestore(newOrder);
+      } catch (error) {
+        console.error('Failed to reorder shapes:', error);
+        throw error;
       }
     },
     [currentUser]
@@ -393,7 +491,8 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       
       // Apply drag positions from other users
       if (isDraggedByOther) {
-        const updates: any = {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const baseUpdates: any = {
           ...mergedShape,
           x: dragPos.x,
           y: dragPos.y,
@@ -404,31 +503,27 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
         
         // Include rotation if it's being updated
         if (dragPos.rotation !== undefined) {
-          updates.rotation = dragPos.rotation;
+          baseUpdates.rotation = dragPos.rotation;
         }
         
         // Include dimensions if they're being updated (for resize operations)
-        if (mergedShape.type === 'rectangle') {
-          if (dragPos.width !== undefined) {
-            updates.width = dragPos.width;
-          }
-          if (dragPos.height !== undefined) {
-            updates.height = dragPos.height;
-          }
-        } else if (mergedShape.type === 'circle') {
-          if (dragPos.radius !== undefined) {
-            updates.radius = dragPos.radius;
-          }
-        } else if (mergedShape.type === 'text') {
-          if (dragPos.width !== undefined) {
-            updates.width = dragPos.width;
-          }
-          if (dragPos.fontSize !== undefined) {
-            updates.fontSize = dragPos.fontSize;
-          }
+        if (mergedShape.type === 'rectangle' && dragPos.width !== undefined) {
+          baseUpdates.width = dragPos.width;
+        }
+        if (mergedShape.type === 'rectangle' && dragPos.height !== undefined) {
+          baseUpdates.height = dragPos.height;
+        }
+        if (mergedShape.type === 'circle' && dragPos.radius !== undefined) {
+          baseUpdates.radius = dragPos.radius;
+        }
+        if (mergedShape.type === 'text' && dragPos.width !== undefined) {
+          baseUpdates.width = dragPos.width;
+        }
+        if (mergedShape.type === 'text' && dragPos.fontSize !== undefined) {
+          baseUpdates.fontSize = dragPos.fontSize;
         }
         
-        return updates;
+        return baseUpdates as Shape;
       }
       
       return mergedShape;
@@ -439,7 +534,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
   const value: CanvasContextType = useMemo(
     () => ({
       shapes: shapesWithDragPositions,
-      selectedId,
+      selectedIds,
       loading,
       addShape,
       updateShape,
@@ -451,7 +546,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
     }),
     [
       shapesWithDragPositions,
-      selectedId,
+      selectedIds,
       loading,
       addShape,
       updateShape,

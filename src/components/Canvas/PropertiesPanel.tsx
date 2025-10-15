@@ -9,13 +9,24 @@ import type { Shape, TextShape } from '../../types';
 
 interface PropertiesPanelProps {
   selectedShape: Shape | null;
+  selectedCount: number;
   onUpdate: (updates: Partial<Shape>, localOnly?: boolean) => void;
+  currentUserId?: string;
 }
 
-function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelProps) {
+function PropertiesPanelComponent({ selectedShape, selectedCount, onUpdate, currentUserId }: PropertiesPanelProps) {
   const [hasFill, setHasFill] = useState(true);
   const [hasStroke, setHasStroke] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  
+  // Check if the selected shape is locked by another user (PR #10)
+  const isLockedByOther = selectedShape?.isLocked && selectedShape.lockedBy !== currentUserId;
+  
+  // Wrapped update function that prevents updates when locked (PR #10)
+  const safeUpdate = useCallback((updates: Partial<Shape>, localOnly?: boolean) => {
+    if (isLockedByOther) return;
+    onUpdate(updates, localOnly);
+  }, [onUpdate, isLockedByOther]);
   
   // Local state for high-frequency inputs (colors, sliders)
   const [localFillColor, setLocalFillColor] = useState('');
@@ -56,12 +67,12 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
     // Schedule update on next frame
     rafIdRef.current = requestAnimationFrame(() => {
       if (pendingUpdateRef.current) {
-        onUpdate(pendingUpdateRef.current, true);
+        safeUpdate(pendingUpdateRef.current, true);
         pendingUpdateRef.current = null;
       }
       rafIdRef.current = null;
     });
-  }, [onUpdate]);
+  }, [safeUpdate]);
 
   // Cleanup RAF on unmount
   useEffect(() => {
@@ -85,8 +96,8 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
       rafIdRef.current = null;
     }
     pendingUpdateRef.current = null;
-    onUpdate({ fill: localFillColor }, false);
-  }, [onUpdate, localFillColor]);
+    safeUpdate({ fill: localFillColor }, false);
+  }, [safeUpdate, localFillColor]);
 
   // Handle stroke color change - update local state and throttle canvas update
   const handleStrokeColorChange = useCallback((color: string) => {
@@ -101,8 +112,8 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
       rafIdRef.current = null;
     }
     pendingUpdateRef.current = null;
-    onUpdate({ stroke: localStrokeColor }, false);
-  }, [onUpdate, localStrokeColor]);
+    safeUpdate({ stroke: localStrokeColor }, false);
+  }, [safeUpdate, localStrokeColor]);
 
   // Handle fill toggle
   const handleFillToggle = useCallback((enabled: boolean) => {
@@ -168,20 +179,43 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
           </button>
         </div>
         <div className="text-center text-gray-500 text-sm mt-8">
-          <svg
-            className="w-12 h-12 mx-auto mb-3 text-gray-400"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5"
-            />
-          </svg>
-          <p>Select a shape to edit its properties</p>
+          {selectedCount > 1 ? (
+            <>
+              <svg
+                className="w-12 h-12 mx-auto mb-3 text-blue-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+              <p className="font-medium text-blue-600">{selectedCount} shapes selected</p>
+              <p className="text-xs mt-2 text-gray-400">Multi-selection active</p>
+              <p className="text-xs mt-1 text-gray-400">Select a single shape to edit properties</p>
+            </>
+          ) : (
+            <>
+              <svg
+                className="w-12 h-12 mx-auto mb-3 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5"
+                />
+              </svg>
+              <p>Select a shape to edit its properties</p>
+            </>
+          )}
         </div>
       </div>
     );
@@ -209,6 +243,19 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
         </button>
       </div>
 
+      {/* Lock Warning (PR #10) */}
+      {isLockedByOther && selectedShape?.lockedByName && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center gap-2 text-red-800 text-sm">
+            <span>🔒</span>
+            <span className="font-medium">Locked by {selectedShape.lockedByName}</span>
+          </div>
+          <p className="text-xs text-red-600 mt-1">
+            This shape cannot be edited while locked
+          </p>
+        </div>
+      )}
+
       <div className="space-y-4">
         {/* Shape Type */}
         <div className="pb-3 border-b border-gray-200">
@@ -225,9 +272,10 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
               <input
                 type="number"
                 value={Math.round(selectedShape.x)}
-                onChange={(e) => onUpdate({ x: parseInt(e.target.value) || 0 }, true)}
-                onBlur={(e) => onUpdate({ x: parseInt(e.target.value) || 0 }, false)}
-                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={(e) => safeUpdate({ x: parseInt(e.target.value) || 0 }, true)}
+                onBlur={(e) => safeUpdate({ x: parseInt(e.target.value) || 0 }, false)}
+                disabled={isLockedByOther}
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
             </div>
             <div>
@@ -235,9 +283,10 @@ function PropertiesPanelComponent({ selectedShape, onUpdate }: PropertiesPanelPr
               <input
                 type="number"
                 value={Math.round(selectedShape.y)}
-                onChange={(e) => onUpdate({ y: parseInt(e.target.value) || 0 }, true)}
-                onBlur={(e) => onUpdate({ y: parseInt(e.target.value) || 0 }, false)}
-                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={(e) => safeUpdate({ y: parseInt(e.target.value) || 0 }, true)}
+                onBlur={(e) => safeUpdate({ y: parseInt(e.target.value) || 0 }, false)}
+                disabled={isLockedByOther}
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
             </div>
           </div>

@@ -10,9 +10,11 @@ export function Tutorial() {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const shortcuts = [
+    { key: 'V', description: 'Select Tool' },
     { key: 'R', description: 'Rectangle Tool' },
     { key: 'C', description: 'Circle Tool' },
     { key: 'T', description: 'Text Tool' },
+    { key: 'Shift + Click', description: 'Multi-Select' },
     { key: 'Delete', description: 'Delete Shape' },
     { key: 'Escape', description: 'Deselect' },
     { key: 'Ctrl + Drag', description: 'Pan Canvas' },
@@ -37,10 +39,10 @@ export function Tutorial() {
   }, [isOpen]);
 
   return (
-    <div ref={dropdownRef} className="absolute bottom-4 right-70 z-10 flex flex-col items-end">
-      {/* Tutorial Dropdown - Opens above button with smooth transition */}
+    <div ref={dropdownRef} className="relative flex flex-col items-end">
+      {/* Tutorial Dropdown - Opens to the left of button */}
       {isOpen && (
-        <div className="mb-2 w-64 bg-white bg-opacity-95 rounded-lg shadow-lg border border-gray-200 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-200">
+        <div className="absolute right-12 top-0 w-64 bg-white bg-opacity-95 rounded-lg shadow-lg border border-gray-200 overflow-hidden animate-in fade-in slide-in-from-right-2 duration-200">
           {/* Header */}
           <div className="bg-gray-50 px-3 py-2 border-b border-gray-200">
             <h3 className="text-sm font-semibold text-gray-700">Keyboard Shortcuts</h3>
@@ -62,14 +64,14 @@ export function Tutorial() {
         </div>
       )}
 
-      {/* Tutorial Button - Stays in place */}
+      {/* Tutorial Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-10 h-10 bg-white bg-opacity-90 hover:bg-opacity-100 text-gray-700 rounded-lg shadow-lg flex items-center justify-center transition-colors border border-gray-200"
+        className="w-10 h-10 flex items-center justify-center rounded hover:bg-gray-100 transition-colors"
         title="Keyboard Shortcuts"
       >
         <svg
-          className="w-5 h-5"
+          className="w-5 h-5 text-gray-700"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"

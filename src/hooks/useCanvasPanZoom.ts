@@ -249,8 +249,11 @@ export function useCanvasPanZoom({ stageRef, stageSize }: UseCanvasPanZoomProps)
 
   const handleResetView = useCallback(() => {
     setStageScale(DEFAULT_ZOOM);
-    setStagePosition({ x: 0, y: 0 });
-  }, []);
+    // Center the canvas in the viewport
+    const centerX = (stageSize.width - CANVAS_WIDTH * DEFAULT_ZOOM) / 2;
+    const centerY = (stageSize.height - CANVAS_HEIGHT * DEFAULT_ZOOM) / 2;
+    setStagePosition({ x: centerX, y: centerY });
+  }, [stageSize]);
 
   return {
     stageScale,

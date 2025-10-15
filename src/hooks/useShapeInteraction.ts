@@ -3,7 +3,7 @@
  * Manages shape drag and transform interactions
  */
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useEffect } from 'react';
 import type Konva from 'konva';
 import type { Shape } from '../types';
 import { updateDragPosition, clearDragPosition } from '../services/dragSync';
@@ -17,6 +17,8 @@ interface UseShapeInteractionProps {
   currentUserId?: string;
   currentUserName?: string;
   updateShape: (id: string, updates: Partial<Shape>) => Promise<void>;
+  selectedIds: string[];
+  shapes: Shape[];
 }
 
 export function useShapeInteraction({
@@ -26,6 +28,8 @@ export function useShapeInteraction({
   currentUserId,
   currentUserName,
   updateShape,
+  selectedIds,
+  shapes,
 }: UseShapeInteractionProps) {
   
   // RAF throttling for drag updates to prevent FPS drops
@@ -40,6 +44,20 @@ export function useShapeInteraction({
     radius?: number;
     fontSize?: number;
   } | null>(null);
+  
+  // Track initial positions of all selected shapes for group drag
+  const initialPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  
+  // CRITICAL FIX: Keep a ref with the latest selectedIds to avoid stale closure issues
+  // When you quickly select shapes and start dragging, the callback might have old selectedIds
+  const selectedIdsRef = useRef<string[]>(selectedIds);
+  const shapesRef = useRef<Shape[]>(shapes);
+  
+  // Update refs whenever selectedIds or shapes change
+  useEffect(() => {
+    selectedIdsRef.current = selectedIds;
+    shapesRef.current = shapes;
+  }, [selectedIds, shapes]);
   
   /**
    * Update cursor position based on current mouse position
@@ -66,13 +84,28 @@ export function useShapeInteraction({
   /**
    * Handle shape drag start - mark shape as being dragged
    * Also update cursor position at drag start
+   * NEW (PR #12): Store initial positions of all selected shapes for group drag
    */
   const handleShapeDragStart = useCallback(
     async (shapeId: string) => {
       if (!currentUserId) return;
       
+      // CRITICAL: Read from ref to get the LATEST selection, not stale closure value
+      const latestSelectedIds = selectedIdsRef.current;
+      const latestShapes = shapesRef.current;
+      
+      // Store initial positions of all selected shapes
+      initialPositionsRef.current.clear();
+      
+      latestSelectedIds.forEach(id => {
+        const shape = latestShapes.find(s => s.id === id);
+        if (shape) {
+          initialPositionsRef.current.set(id, { x: shape.x, y: shape.y });
+        }
+      });
+      
       try {
-        // Mark shape as being dragged by current user
+        // Mark dragged shape as being dragged by current user
         await updateShape(shapeId, {
           isDragging: true,
           draggingBy: currentUserId,
@@ -92,6 +125,7 @@ export function useShapeInteraction({
    * Handle shape drag move - update position in real-time using RTDB
    * Throttled with RAF for 60fps max to prevent FPS drops
    * ALSO update cursor position during drag for smooth tracking
+   * NEW (PR #12): Move all selected shapes together if dragging in multi-selection
    */
   const handleShapeDragMove = useCallback(
     (shapeId: string, x: number, y: number) => {
@@ -109,15 +143,53 @@ export function useShapeInteraction({
       dragRafRef.current = requestAnimationFrame(() => {
         const pending = pendingDragUpdateRef.current;
         if (pending) {
-          // Update shape position in RTDB
-          updateDragPosition(
-            'global-canvas-v1',
-            pending.shapeId,
-            pending.x,
-            pending.y,
-            currentUserId,
-            currentUserName || 'Unknown User'
-          ).catch(console.error);
+          // Check if we have multiple shapes stored (indicates multi-selection drag)
+          const storedShapeCount = initialPositionsRef.current.size;
+          const isMultiDrag = storedShapeCount > 1 && initialPositionsRef.current.has(pending.shapeId);
+          
+          // If multiple shapes stored and this shape is in them, move all stored shapes
+          if (isMultiDrag) {
+            // Calculate delta from initial position
+            const initialPos = initialPositionsRef.current.get(pending.shapeId);
+            if (initialPos) {
+              const deltaX = pending.x - initialPos.x;
+              const deltaY = pending.y - initialPos.y;
+              
+              // Move all stored shapes by the same delta
+              initialPositionsRef.current.forEach((initialShapePos, id) => {
+                // Update RTDB for real-time sync with other users
+                updateDragPosition(
+                  'global-canvas-v1',
+                  id,
+                  initialShapePos.x + deltaX,
+                  initialShapePos.y + deltaY,
+                  currentUserId,
+                  currentUserName || 'Unknown User'
+                ).catch(console.error);
+                
+                // ONLY update local state for OTHER shapes (not the one being dragged)
+                // This keeps dragging smooth - Konva handles the dragged shape, we move the others
+                if (id !== pending.shapeId) {
+                  updateShape(id, { 
+                    x: initialShapePos.x + deltaX, 
+                    y: initialShapePos.y + deltaY 
+                  }, true).catch(console.error);
+                }
+              });
+            }
+          } else {
+            // Single shape drag - just update RTDB, let Konva handle the visual dragging
+            updateDragPosition(
+              'global-canvas-v1',
+              pending.shapeId,
+              pending.x,
+              pending.y,
+              currentUserId,
+              currentUserName || 'Unknown User'
+            ).catch(console.error);
+            
+            // Don't update local state - let Konva handle smooth dragging
+          }
           
           // ALSO update cursor position during drag
           updateCurrentCursorPosition();
@@ -127,12 +199,13 @@ export function useShapeInteraction({
         dragRafRef.current = null;
       });
     },
-    [currentUserId, currentUserName, updateCurrentCursorPosition]
+    [currentUserId, currentUserName, updateCurrentCursorPosition, selectedIds, updateShape]
   );
 
   /**
    * Handle shape drag end - save final position to Firestore and clear RTDB
    * Also update cursor position at drag end and cancel any pending RAF
+   * NEW (PR #12): Save all selected shapes' positions if dragging in multi-selection
    */
   const handleShapeDragEnd = useCallback(
     async (shapeId: string, x: number, y: number) => {
@@ -159,17 +232,49 @@ export function useShapeInteraction({
       }
 
       try {
-        // Save final position to Firestore FIRST (prevents visual jump)
-        await updateShape(shapeId, {
-          x,
-          y,
-          isDragging: false,
-          draggingBy: null,
-          draggingByName: null,
-        });
-        
-        // Then clear real-time drag position from RTDB
-        await clearDragPosition('global-canvas-v1', shapeId);
+        // If multiple shapes are selected and this shape is in the selection, save all selected shapes
+        if (selectedIds.length > 1 && selectedIds.includes(shapeId)) {
+          // Calculate delta from initial position
+          const initialPos = initialPositionsRef.current.get(shapeId);
+          if (initialPos) {
+            const deltaX = x - initialPos.x;
+            const deltaY = y - initialPos.y;
+            
+            // Save all selected shapes' final positions to Firestore
+            await Promise.all(
+              selectedIds.map(async (id) => {
+                const initialShapePos = initialPositionsRef.current.get(id);
+                if (initialShapePos) {
+                  await updateShape(id, {
+                    x: initialShapePos.x + deltaX,
+                    y: initialShapePos.y + deltaY,
+                    isDragging: false,
+                    draggingBy: null,
+                    draggingByName: null,
+                  });
+                  
+                  // Clear RTDB position for each shape
+                  await clearDragPosition('global-canvas-v1', id);
+                }
+              })
+            );
+          }
+        } else {
+          // Single shape drag - save only the dragged shape
+          await updateShape(shapeId, {
+            x,
+            y,
+            isDragging: false,
+            draggingBy: null,
+            draggingByName: null,
+          });
+          
+          // Then clear real-time drag position from RTDB
+          await clearDragPosition('global-canvas-v1', shapeId);
+        }
+
+        // Clear initial positions
+        initialPositionsRef.current.clear();
 
         // Update cursor position at drag end
         updateCurrentCursorPosition();
@@ -177,7 +282,7 @@ export function useShapeInteraction({
         console.error('Failed to update shape:', error);
       }
     },
-    [currentUserId, currentUserName, updateShape, updateCurrentCursorPosition]
+    [currentUserId, currentUserName, updateShape, updateCurrentCursorPosition, selectedIds]
   );
 
   /**

@@ -9,13 +9,13 @@ import type { Shape } from '../../types';
 
 interface LayersPanelProps {
   shapes: Shape[];
-  selectedId: string | null;
-  onSelectShape: (id: string) => void;
+  selectedIds: string[];
+  onSelectShape: (id: string, addToSelection?: boolean) => void;
   onReorderShapes: (newOrder: Shape[]) => void;
   currentUserId?: string;
 }
 
-function LayersPanelComponent({ shapes, selectedId, onSelectShape, onReorderShapes, currentUserId }: LayersPanelProps) {
+function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderShapes, currentUserId }: LayersPanelProps) {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -250,7 +250,7 @@ function LayersPanelComponent({ shapes, selectedId, onSelectShape, onReorderShap
           </div>
         ) : (
           reversedShapes.map((shape, index) => {
-            const isSelected = shape.id === selectedId;
+            const isSelected = selectedIds.includes(shape.id);
             const isDragging = draggedIndex === index;
             const isDragOver = dragOverIndex === index;
             const isLockedByOther = shape.isLocked && shape.lockedBy !== null && shape.lockedBy !== currentUserId;
@@ -272,7 +272,7 @@ function LayersPanelComponent({ shapes, selectedId, onSelectShape, onReorderShap
                   onDragLeave={handleDragLeave}
                   onDrop={(e) => handleDrop(e, index)}
                   onDragEnd={handleDragEnd}
-                  onClick={() => !isLockedByOther && onSelectShape(shape.id)}
+                  onClick={(e) => !isLockedByOther && onSelectShape(shape.id, e.shiftKey)}
                   className={`
                     group flex items-center gap-2 px-2 py-2 rounded-md 
                     transition-all duration-150
@@ -358,9 +358,10 @@ function LayersPanelComponent({ shapes, selectedId, onSelectShape, onReorderShap
 
 // Export memoized component to prevent unnecessary re-renders
 export const LayersPanel = memo(LayersPanelComponent, (prevProps, nextProps) => {
-  // Only re-render if shapes array changed, selectedId changed, or callbacks changed
+  // Only re-render if shapes array changed, selectedIds changed, or callbacks changed
   return (
-    prevProps.selectedId === nextProps.selectedId &&
+    prevProps.selectedIds.length === nextProps.selectedIds.length &&
+    prevProps.selectedIds.every((id, index) => id === nextProps.selectedIds[index]) &&
     prevProps.shapes.length === nextProps.shapes.length &&
     prevProps.shapes.every((shape, index) => 
       JSON.stringify(shape) === JSON.stringify(nextProps.shapes[index])

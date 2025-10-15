@@ -25,7 +25,6 @@ import { Shape } from './Shape';
 import { PropertiesPanel } from './PropertiesPanel';
 import { LayersPanel } from './LayersPanel';
 import { CursorsLayer } from './CursorsLayer';
-import { Tutorial } from './Tutorial';
 import { FPSCounter } from './FPSCounter';
 import { useCanvasPanZoom } from '../../hooks/useCanvasPanZoom';
 import { useShapeDrawing } from '../../hooks/useShapeDrawing';
@@ -47,10 +46,11 @@ export function Canvas() {
   const [showGrid, setShowGrid] = useState(true);
   const [selectedTool, setSelectedTool] = useState<Tool>('select');
 
-  const { shapes, selectedId, selectShape, addShape, updateShape, deleteShape, reorderShapes, loading } = useCanvasContext();
+  const { shapes, selectedIds, selectShape, addShape, updateShape, deleteShape, reorderShapes, loading } = useCanvasContext();
   const { currentUser } = useAuth();
 
-  const selectedShape = shapes.find(s => s.id === selectedId) || null;
+  const selectedShapes = shapes.filter(s => selectedIds.includes(s.id));
+  const selectedShape = selectedShapes.length === 1 ? selectedShapes[0] : null;
 
   // Pan/Zoom Hook
   const {
@@ -118,6 +118,8 @@ export function Canvas() {
     currentUserId: currentUser?.uid,
     currentUserName: currentUser?.displayName || 'Unknown User',
     updateShape,
+    selectedIds,
+    shapes,
   });
 
   /**
@@ -177,15 +179,15 @@ export function Canvas() {
   );
 
   /**
-   * Handle property updates from panel
+   * Handle property updates from panel (only for single selection)
    */
   const handlePropertyUpdate = useCallback(
     (updates: ShapeUpdate, localOnly?: boolean) => {
-      if (selectedId) {
-        updateShape(selectedId, updates, localOnly);
+      if (selectedIds.length === 1) {
+        updateShape(selectedIds[0], updates, localOnly);
       }
     },
-    [selectedId, updateShape]
+    [selectedIds, updateShape]
   );
 
   const handleToggleGrid = useCallback(() => {
@@ -215,15 +217,18 @@ export function Canvas() {
         return;
       }
 
-      // Delete selected shape (only Delete key, not Backspace)
+      // Delete selected shapes (only Delete key, not Backspace)
       if (e.key === 'Delete') {
-        if (selectedId) {
+        if (selectedIds.length > 0) {
           e.preventDefault();
-          deleteShape(selectedId);
+          // Delete all selected shapes
+          selectedIds.forEach(shapeId => {
+            deleteShape(shapeId);
+          });
         }
       }
       
-      // Escape to deselect
+      // Escape to deselect all
       if (e.key === 'Escape') {
         selectShape(null);
       }
@@ -231,7 +236,7 @@ export function Canvas() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedId, deleteShape, selectShape]);
+  }, [selectedIds, deleteShape, selectShape]);
 
   const getCursorStyle = useCallback(() => {
     if (isPanning) return 'grabbing';
@@ -286,7 +291,7 @@ export function Canvas() {
       {/* Layers Panel */}
       <LayersPanel
         shapes={shapes}
-        selectedId={selectedId}
+        selectedIds={selectedIds}
         onSelectShape={selectShape}
         onReorderShapes={reorderShapes}
       />
@@ -357,13 +362,13 @@ export function Canvas() {
 
             {/* Render non-selected shapes first */}
             {shapes
-              .filter(shape => shape.id !== selectedId)
+              .filter(shape => !selectedIds.includes(shape.id))
               .map((shape) => (
                 <Shape
                   key={shape.id}
                   shape={shape}
                   isSelected={false}
-                  onSelect={() => selectShape(shape.id)}
+                  onSelect={(shiftKey) => selectShape(shape.id, shiftKey)}
                   onDragStart={() => handleShapeDragStart(shape.id)}
                   onDragMove={(x, y) => handleShapeDragMove(shape.id, x, y)}
                   onDragEnd={(x, y) => handleShapeDragEnd(shape.id, x, y)}
@@ -375,23 +380,29 @@ export function Canvas() {
                 />
               ))}
 
-            {/* Render selected shape last (on top) */}
-            {selectedId && shapes.find(s => s.id === selectedId) && (
-              <Shape
-                key={selectedId}
-                shape={shapes.find(s => s.id === selectedId)!}
-                isSelected={true}
-                onSelect={() => selectShape(selectedId)}
-                onDragStart={() => handleShapeDragStart(selectedId)}
-                onDragMove={(x, y) => handleShapeDragMove(selectedId, x, y)}
-                onDragEnd={(x, y) => handleShapeDragEnd(selectedId, x, y)}
-                onTransformEnd={(updates) => handleShapeTransformEnd(selectedId, updates)}
-                onTransform={(x, y, rotation, width, height, radius, fontSize) => handleShapeTransform(selectedId, x, y, rotation, width, height, radius, fontSize)}
-                isDraggable={selectedTool === 'select'}
-                currentUserId={currentUser?.uid}
-                onDoubleClick={shapes.find(s => s.id === selectedId)?.type === 'text' ? () => handleTextDoubleClick(shapes.find(s => s.id === selectedId) as TextShape) : undefined}
-              />
-            )}
+            {/* Render selected shapes last (on top) with selection indicators */}
+            {selectedIds.map(selectedId => {
+              const shape = shapes.find(s => s.id === selectedId);
+              if (!shape) return null;
+              
+              return (
+                <Shape
+                  key={selectedId}
+                  shape={shape}
+                  isSelected={true}
+                  isMultiSelected={selectedIds.length > 1}
+                  onSelect={(shiftKey) => selectShape(selectedId, shiftKey)}
+                  onDragStart={() => handleShapeDragStart(selectedId)}
+                  onDragMove={(x, y) => handleShapeDragMove(selectedId, x, y)}
+                  onDragEnd={(x, y) => handleShapeDragEnd(selectedId, x, y)}
+                  onTransformEnd={(updates) => handleShapeTransformEnd(selectedId, updates)}
+                  onTransform={(x, y, rotation, width, height, radius, fontSize) => handleShapeTransform(selectedId, x, y, rotation, width, height, radius, fontSize)}
+                  isDraggable={selectedTool === 'select'}
+                  currentUserId={currentUser?.uid}
+                  onDoubleClick={shape.type === 'text' ? () => handleTextDoubleClick(shape as TextShape) : undefined}
+                />
+              );
+            })}
 
             {/* Shape preview while drawing */}
             {isDrawing && newShapePreview && newShapePreview.width > 0 && newShapePreview.height > 0 && (
@@ -440,10 +451,15 @@ export function Canvas() {
           <div>Tool: {selectedTool}</div>
           <div>Zoom: {(stageScale * 100).toFixed(0)}%</div>
           <div>Shapes: {shapes.length}</div>
+          {selectedIds.length > 0 && (
+            <div className="mt-1 text-blue-600 font-medium">
+              Selected: {selectedIds.length}
+            </div>
+          )}
           <div className="mt-2 pt-2 border-t border-gray-200 text-gray-500">
             <div className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs">Ctrl</kbd>
-              <span>+ Drag to Pan</span>
+              <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs">Shift</kbd>
+              <span>+ Click to Multi-Select</span>
             </div>
           </div>
         </div>
@@ -488,11 +504,10 @@ export function Canvas() {
       {/* Properties Panel */}
       <PropertiesPanel
         selectedShape={selectedShape}
+        selectedCount={selectedIds.length}
         onUpdate={handlePropertyUpdate}
+        currentUserId={currentUser?.uid}
       />
-
-      {/* Tutorial Button */}
-      <Tutorial />
     </div>
   );
 }

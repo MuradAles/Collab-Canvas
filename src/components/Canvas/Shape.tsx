@@ -11,8 +11,6 @@ import type { Shape as ShapeType } from '../../types';
 import {
   SELECTION_STROKE,
   SELECTION_STROKE_WIDTH,
-  LOCKED_STROKE,
-  LOCKED_STROKE_WIDTH,
   CANVAS_WIDTH,
   CANVAS_HEIGHT,
 } from '../../utils/constants';
@@ -21,7 +19,8 @@ import { constrainRectangle } from '../../utils/helpers';
 interface ShapeProps {
   shape: ShapeType;
   isSelected: boolean;
-  onSelect: () => void;
+  isMultiSelected?: boolean;
+  onSelect: (shiftKey: boolean) => void;
   onDragStart?: () => void;
   onDragMove?: (x: number, y: number) => void;
   onDragEnd: (x: number, y: number) => void;
@@ -32,7 +31,7 @@ interface ShapeProps {
   onDoubleClick?: () => void;
 }
 
-function ShapeComponent({ shape, isSelected, onSelect, onDragStart, onDragMove, onDragEnd, onTransformEnd, onTransform, isDraggable, currentUserId, onDoubleClick }: ShapeProps) {
+function ShapeComponent({ shape, isSelected, isMultiSelected, onSelect, onDragStart, onDragMove, onDragEnd, onTransformEnd, onTransform, isDraggable, currentUserId, onDoubleClick }: ShapeProps) {
   const shapeRef = useRef<Konva.Rect | Konva.Circle | Konva.Text | null>(null);
   const transformerRef = useRef<Konva.Transformer | null>(null);
   const [isLocalDragging, setIsLocalDragging] = useState(false);
@@ -168,6 +167,37 @@ function ShapeComponent({ shape, isSelected, onSelect, onDragStart, onDragMove, 
     [shape, onTransform]
   );
 
+  // Calculate lock status before using in callbacks
+  const isLocked = shape.isLocked && shape.lockedBy !== null;
+  const isLockedByOther = isLocked && shape.lockedBy !== currentUserId;
+  // IMPROVEMENT: Only allow dragging if shape is selected (PR #10)
+  const canDrag = isDraggable && !isLockedByOther && isSelected;
+
+  // Handle shape click - check if shape is locked before allowing selection (PR #10)
+  // NEW (PR #12): Detect Shift key from the actual click event for multi-selection
+  // IMPORTANT: Don't change selection if clicking an already-selected shape (prevents clearing multi-selection when starting to drag)
+  // UNLESS: Multiple shapes are selected - then clicking one without Shift should make it the only selection
+  const handleShapeClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (isLockedByOther) {
+      // Shape is locked by another user - prevent selection silently
+      return;
+    }
+    
+    // If clicking an already-selected shape without Shift
+    if (isSelected && !e.evt.shiftKey) {
+      // If multiple shapes are selected, this should make only this one selected
+      if (isMultiSelected) {
+        onSelect(false);
+      } else {
+        // Only this shape is selected - don't change selection (prevents clearing when starting drag)
+        return;
+      }
+    } else {
+      // Normal selection behavior
+      onSelect(e.evt.shiftKey);
+    }
+  }, [isLockedByOther, onSelect, isSelected, isMultiSelected]);
+
   const handleDragStart = useCallback(() => {
     setIsLocalDragging(true);
     if (onDragStart) {
@@ -221,9 +251,6 @@ function ShapeComponent({ shape, isSelected, onSelect, onDragStart, onDragMove, 
     },
     [shape, onDragEnd]
   );
-
-  const isLocked = shape.isLocked && shape.lockedBy !== null;
-  const canDrag = isDraggable && !isLocked;
   
   // Check if this shape is being dragged by another user
   const isDraggedByOther = shape.isDragging && shape.draggingBy !== currentUserId && !isLocalDragging;
@@ -233,8 +260,7 @@ function ShapeComponent({ shape, isSelected, onSelect, onDragStart, onDragMove, 
 
   // Determine stroke color and width
   const getStrokeColor = () => {
-    if (isLocked) return LOCKED_STROKE;
-    if (isDraggedByOther || isRotatedByOther) return '#f59e0b'; // Amber color for shapes being dragged/rotated by others
+    // Don't show special stroke for locked shapes - transparency is enough feedback
     if (shape.type === 'rectangle' || shape.type === 'circle') {
       return shape.stroke === 'transparent' ? undefined : shape.stroke;
     }
@@ -242,18 +268,17 @@ function ShapeComponent({ shape, isSelected, onSelect, onDragStart, onDragMove, 
   };
 
   const getStrokeWidth = () => {
-    if (isLocked) return LOCKED_STROKE_WIDTH;
-    if (isDraggedByOther || isRotatedByOther) return 3; // Thicker border for shapes being dragged/rotated by others
+    // Don't show special stroke for locked shapes - transparency is enough feedback
     if (shape.type === 'rectangle' || shape.type === 'circle') {
       return shape.strokeWidth;
     }
     return 0;
   };
   
-  // Determine opacity - slightly transparent if being dragged by another user
+  // Determine opacity - 60% transparent (0.4) if locked by another user
   const getOpacity = () => {
-    if (isLocked) return 0.7;
-    if (isDraggedByOther || isRotatedByOther) return 0.85;
+    if (isLockedByOther) return 0.4; // 60% transparent for locked shapes (PR #10)
+    if (isDraggedByOther || isRotatedByOther) return 0.4; // Same transparency for shapes being moved by others
     return 1;
   };
 
@@ -300,7 +325,8 @@ function ShapeComponent({ shape, isSelected, onSelect, onDragStart, onDragMove, 
   };
   
   const renderLockIndicator = () => {
-    if (!isLocked || !shape.lockedByName) return null;
+    // Only show lock indicator if locked by another user (PR #10)
+    if (!isLockedByOther || !shape.lockedByName) return null;
 
     // Position the label above the shape
     let labelX = shape.x;
@@ -351,12 +377,13 @@ function ShapeComponent({ shape, isSelected, onSelect, onDragStart, onDragMove, 
           cornerRadius={shape.cornerRadius}
           rotation={shape.rotation || 0}
           draggable={canDrag}
-          onClick={onSelect}
-          onTap={onSelect}
+          onClick={handleShapeClick}
+          onTap={handleShapeClick}
           onDragStart={handleDragStart}
           onDragMove={handleDragMove}
           onDragEnd={handleDragEnd}
           opacity={getOpacity()}
+          listening={!isLockedByOther} // Disable interaction if locked by another user
           perfectDrawEnabled={false}
         />
         {isSelected && (
@@ -393,12 +420,13 @@ function ShapeComponent({ shape, isSelected, onSelect, onDragStart, onDragMove, 
           strokeWidth={getStrokeWidth()}
           rotation={shape.rotation || 0}
           draggable={canDrag}
-          onClick={onSelect}
-          onTap={onSelect}
+          onClick={handleShapeClick}
+          onTap={handleShapeClick}
           onDragStart={handleDragStart}
           onDragMove={handleDragMove}
           onDragEnd={handleDragEnd}
           opacity={getOpacity()}
+          listening={!isLockedByOther} // Disable interaction if locked by another user
           perfectDrawEnabled={false}
         />
         {isSelected && (
@@ -440,13 +468,14 @@ function ShapeComponent({ shape, isSelected, onSelect, onDragStart, onDragMove, 
           width={shape.width}
           rotation={shape.rotation || 0}
           draggable={canDrag}
-          onClick={onSelect}
-          onTap={onSelect}
-          onDblClick={onDoubleClick}
+          onClick={handleShapeClick}
+          onTap={handleShapeClick}
+          onDblClick={isLockedByOther ? undefined : onDoubleClick} // Prevent double-click if locked
           onDragStart={handleDragStart}
           onDragMove={handleDragMove}
           onDragEnd={handleDragEnd}
           opacity={getOpacity()}
+          listening={!isLockedByOther} // Disable interaction if locked by another user
           perfectDrawEnabled={false}
         />
         {isSelected && (

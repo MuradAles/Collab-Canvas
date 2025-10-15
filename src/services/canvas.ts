@@ -35,7 +35,6 @@ import type { Shape, CanvasDocument } from '../types';
 export const GLOBAL_CANVAS_ID = 'global-canvas-v1';
 const CANVAS_COLLECTION = 'canvas';
 const SHAPES_SUBCOLLECTION = 'shapes';
-const LOCK_TIMEOUT_MS = 5000; // Auto-release locks after 5 seconds
 
 // ============================================================================
 // Types
@@ -54,19 +53,6 @@ interface LockTimeoutMap {
 // ============================================================================
 
 const lockTimeouts: LockTimeoutMap = {};
-
-/**
- * Set a timeout to auto-release a lock
- */
-function setLockTimeout(shapeId: string, callback: () => void): void {
-  // Clear existing timeout if any
-  if (lockTimeouts[shapeId]) {
-    clearTimeout(lockTimeouts[shapeId]);
-  }
-  
-  // Set new timeout
-  lockTimeouts[shapeId] = setTimeout(callback, LOCK_TIMEOUT_MS);
-}
 
 /**
  * Clear a lock timeout
@@ -292,6 +278,9 @@ export async function lockShape(
       isLocked: true,
       lockedBy: userId,
       lockedByName: userName,
+      isDragging: false,
+      draggingBy: null,
+      draggingByName: null,
     });
     
     // Set up auto-release in Realtime Database using onDisconnect
@@ -304,11 +293,6 @@ export async function lockShape(
     
     // Auto-release lock on disconnect
     await onDisconnect(lockRef).remove();
-    
-    // Set timeout to auto-release lock after 5 seconds
-    setLockTimeout(shapeId, () => {
-      unlockShape(shapeId, userId).catch(console.error);
-    });
   } catch (error) {
     console.error('Failed to lock shape:', error);
     throw error;
@@ -324,7 +308,7 @@ export async function unlockShape(
   userId: string
 ): Promise<void> {
   try {
-    // Clear timeout
+    // Clear timeout (if any - though we don't set them anymore)
     clearLockTimeout(shapeId);
     
     const shapeRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID, SHAPES_SUBCOLLECTION, shapeId);
