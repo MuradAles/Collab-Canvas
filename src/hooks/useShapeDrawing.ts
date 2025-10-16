@@ -119,6 +119,7 @@ export function useShapeDrawing({
             fill: DEFAULT_TEXT_FILL,
             fontStyle: 'normal',
             textDecoration: '',
+            width: 200, // Default width for new text shapes
           };
           
           // Add shape and notify parent to enable editing
@@ -238,8 +239,6 @@ export function useShapeDrawing({
       const length = Math.sqrt(dx * dx + dy * dy);
 
       if (length >= MIN_SHAPE_SIZE) {
-        console.log('[Line Created]:', newLinePreview.x1, newLinePreview.y1, newLinePreview.x2, newLinePreview.y2);
-        
         const lineShape: Omit<LineShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'> = {
           type: 'line',
           // Lines use absolute x1, y1, x2, y2 coordinates - no need for x, y, or rotation

@@ -119,7 +119,6 @@ export function useShapeHandlers({
     let newWidth = 0;
     let newHeight = 0;
     let newRadius = 0;
-    let newFontSize = 0;
 
     if (shape.type === 'rectangle') {
       newWidth = Math.max(5, node.width() * scaleX);
@@ -128,10 +127,8 @@ export function useShapeHandlers({
       const circleNode = node as Konva.Circle;
       newRadius = Math.max(5, circleNode.radius() * scaleX);
     } else if (shape.type === 'text') {
-      newWidth = Math.max(5, node.width() * scaleX);
-      const scale = (scaleX + scaleY) / 2;
-      const currentFontSize = shape.type === 'text' ? shape.fontSize : 16;
-      newFontSize = Math.max(8, Math.round(currentFontSize * scale));
+      // For text, only change width, keep fontSize constant
+      newWidth = Math.max(50, node.width() * scaleX);
     }
 
     // Reset scale immediately
@@ -172,7 +169,6 @@ export function useShapeHandlers({
         x: node.x(),
         y: node.y(),
         width: newWidth,
-        fontSize: newFontSize,
         rotation: rotation,
       });
     }
@@ -182,11 +178,21 @@ export function useShapeHandlers({
     const node = shapeRef.current;
     if (!node || !onTransform) return;
 
+    const scaleX = node.scaleX();
+    const scaleY = node.scaleY();
+
+    if (shape.type === 'text') {
+      // For text, apply width change immediately and reset scale
+      // This prevents scaling effect and shows text reflow in real-time
+      const newWidth = Math.max(50, node.width() * scaleX);
+      node.width(newWidth);
+      node.scaleX(1);
+      node.scaleY(1);
+    }
+
     const x = node.x();
     const y = node.y();
     const rotation = node.rotation();
-    const scaleX = node.scaleX();
-    const scaleY = node.scaleY();
 
     let width: number | undefined;
     let height: number | undefined;
@@ -200,10 +206,8 @@ export function useShapeHandlers({
       const circleNode = node as Konva.Circle;
       radius = circleNode.radius() * scaleX;
     } else if (shape.type === 'text') {
-      width = node.width() * scaleX;
-      const scale = (scaleX + scaleY) / 2;
-      const currentFontSize = shape.type === 'text' ? shape.fontSize : 16;
-      fontSize = currentFontSize * scale;
+      // Width already applied above
+      width = node.width();
     }
 
     onTransform(x, y, rotation, width, height, radius, fontSize);
@@ -238,8 +242,6 @@ export function useShapeHandlers({
       const newX2 = dragStartPosRef.current.x2 + dx;
       const newY2 = dragStartPosRef.current.y2 + dy;
 
-      console.log('[Line Drag Move]:', newX1, newY1, newX2, newY2);
-
       const midX = (newX1 + newX2) / 2;
       const midY = (newY1 + newY2) / 2;
 
@@ -264,8 +266,6 @@ export function useShapeHandlers({
       const newX2 = dragStartPosRef.current.x2 + dx;
       const newY2 = dragStartPosRef.current.y2 + dy;
 
-      console.log('[Line Drag End]:', newX1, newY1, newX2, newY2);
-
       node.position({ x: 0, y: 0 });
 
       onDragEnd((newX1 + newX2) / 2, (newY1 + newY2) / 2);
@@ -288,9 +288,6 @@ export function useShapeHandlers({
       const currentY1 = anchorType === 'start' ? newY : lineShape.y1;
       const currentX2 = anchorType === 'end' ? newX : lineShape.x2;
       const currentY2 = anchorType === 'end' ? newY : lineShape.y2;
-
-      console.log(`[Anchor Drag ${anchorType}]:`, currentX1, currentY1, currentX2, currentY2);
-
       if (onTransform) {
         onTransform(0, 0, 0, undefined, undefined, undefined, undefined, currentX1, currentY1, currentX2, currentY2);
       }
@@ -313,8 +310,6 @@ export function useShapeHandlers({
         updates.x2 = newX;
         updates.y2 = newY;
       }
-      
-      console.log(`[Anchor Drag End ${anchorType}]:`, updates);
       
       onTransformEnd(updates);
     },
