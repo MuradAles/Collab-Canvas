@@ -195,3 +195,81 @@ export function subscribeToPresence(
   };
 }
 
+// ============================================================================
+// AI Activity Broadcasting
+// ============================================================================
+
+export interface AIActivityData {
+  userId: string;
+  userName: string;
+  command: string;
+  timestamp: number;
+}
+
+export interface AIActivityCallback {
+  (activity: AIActivityData): void;
+}
+
+/**
+ * Broadcast AI activity to all users
+ */
+export async function broadcastAIActivity(
+  userId: string,
+  userName: string,
+  command: string
+): Promise<void> {
+  try {
+    const activityRef = ref(rtdb, `ai-activity/${GLOBAL_CANVAS_ID}/${Date.now()}`);
+    const activityData: AIActivityData = {
+      userId,
+      userName,
+      command,
+      timestamp: Date.now(),
+    };
+    
+    await set(activityRef, activityData);
+    
+    // Auto-delete after 5 seconds
+    setTimeout(async () => {
+      try {
+        await set(activityRef, null);
+      } catch (error) {
+        // Silently ignore cleanup errors
+      }
+    }, 5000);
+  } catch (error) {
+    console.error('Failed to broadcast AI activity:', error);
+  }
+}
+
+/**
+ * Subscribe to AI activity from other users
+ */
+export function subscribeToAIActivity(
+  currentUserId: string,
+  callback: AIActivityCallback
+): Unsubscribe {
+  const activityRef = ref(rtdb, `ai-activity/${GLOBAL_CANVAS_ID}`);
+  
+  const handleActivityUpdate = (snapshot: any) => {
+    const data = snapshot.val();
+    
+    if (!data) return;
+    
+    // Get all activities and find the most recent one
+    const activities: AIActivityData[] = Object.values(data);
+    const latestActivity = activities[activities.length - 1];
+    
+    // Only notify about other users' activities
+    if (latestActivity && latestActivity.userId !== currentUserId) {
+      callback(latestActivity);
+    }
+  };
+  
+  onValue(activityRef, handleActivityUpdate);
+  
+  return () => {
+    off(activityRef, 'value', handleActivityUpdate);
+  };
+}
+

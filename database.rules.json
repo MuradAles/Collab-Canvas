@@ -23,6 +23,14 @@
           ".write": "auth != null"
         }
       }
+    },
+    "ai-activity": {
+      "$canvasId": {
+        ".read": "auth != null",
+        "$timestamp": {
+          ".write": "auth != null"
+        }
+      }
     }
   }
 }
