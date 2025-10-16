@@ -56,6 +56,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
     rectangle: 0,
     circle: 0,
     text: 0,
+    line: 0,
   });
   
   // Store current user ID in a ref for cleanup (persists even after currentUser becomes null)
@@ -128,7 +129,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
           });
           
           // Update shape counters based on existing shapes
-          const counters = { rectangle: 0, circle: 0, text: 0 };
+          const counters = { rectangle: 0, circle: 0, text: 0, line: 0 };
           updatedShapes.forEach((shape) => {
             const match = shape.name.match(/(\d+)$/);
             if (match) {
@@ -213,6 +214,8 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
         name = `Rectangle ${shapeNumber}`;
       } else if (shapeData.type === 'circle') {
         name = `Circle ${shapeNumber}`;
+      } else if (shapeData.type === 'line') {
+        name = `Line ${shapeNumber}`;
       } else {
         name = `Text ${shapeNumber}`;
       }
@@ -476,8 +479,12 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       const dragPos = dragPositions.get(shape.id);
       const isDraggedByOther = dragPos && dragPos.draggingBy !== currentUser?.uid;
       
+      // Apply drag positions ONLY from other users (not our own)
+      // Local updates handle our own dragging for instant feedback
+      const shouldApplyDragPos = isDraggedByOther;
+      
       // If no updates for this shape, return the original reference (prevents unnecessary re-renders)
-      if (!localUpdate && !isDraggedByOther) {
+      if (!localUpdate && !shouldApplyDragPos) {
         return shape;
       }
       
@@ -489,16 +496,17 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
         mergedShape = { ...mergedShape, ...localUpdate } as Shape;
       }
       
-      // Apply drag positions from other users
-      if (isDraggedByOther) {
+      // Apply drag positions (from other users OR current user for lines)
+      if (shouldApplyDragPos && dragPos) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const baseUpdates: any = {
           ...mergedShape,
           x: dragPos.x,
           y: dragPos.y,
-          isDragging: true,
-          draggingBy: dragPos.draggingBy,
-          draggingByName: dragPos.draggingByName,
+          // Only mark as "dragging" if it's by another user
+          isDragging: isDraggedByOther,
+          draggingBy: isDraggedByOther ? dragPos.draggingBy : undefined,
+          draggingByName: isDraggedByOther ? dragPos.draggingByName : undefined,
         };
         
         // Include rotation if it's being updated
@@ -521,6 +529,22 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
         }
         if (mergedShape.type === 'text' && dragPos.fontSize !== undefined) {
           baseUpdates.fontSize = dragPos.fontSize;
+        }
+        
+        // Include line coordinates if they're being updated
+        if (mergedShape.type === 'line') {
+          if (dragPos.x1 !== undefined) {
+            baseUpdates.x1 = dragPos.x1;
+          }
+          if (dragPos.y1 !== undefined) {
+            baseUpdates.y1 = dragPos.y1;
+          }
+          if (dragPos.x2 !== undefined) {
+            baseUpdates.x2 = dragPos.x2;
+          }
+          if (dragPos.y2 !== undefined) {
+            baseUpdates.y2 = dragPos.y2;
+          }
         }
         
         return baseUpdates as Shape;

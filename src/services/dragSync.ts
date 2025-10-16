@@ -15,6 +15,10 @@ export interface DragPosition {
   height?: number;       // For rectangles
   radius?: number;       // For circles
   fontSize?: number;     // For text
+  x1?: number;           // For lines
+  y1?: number;           // For lines
+  x2?: number;           // For lines
+  y2?: number;           // For lines
   draggingBy: string;
   draggingByName: string;
   timestamp: number;
@@ -22,7 +26,8 @@ export interface DragPosition {
 
 /**
  * Update shape position and transformation in real-time during drag/resize/rotate
- * No throttling - sends every position update for smooth movement
+ * Called by useShapeInteraction hook which throttles updates using RAF (~60fps)
+ * This function itself is fire-and-forget for maximum speed
  */
 export async function updateDragPosition(
   canvasId: string,
@@ -35,7 +40,11 @@ export async function updateDragPosition(
   width?: number,
   height?: number,
   radius?: number,
-  fontSize?: number
+  fontSize?: number,
+  x1?: number,
+  y1?: number,
+  x2?: number,
+  y2?: number
 ): Promise<void> {
   const dragRef = ref(rtdb, `drag/${canvasId}/${shapeId}`);
   
@@ -66,6 +75,22 @@ export async function updateDragPosition(
     
     if (fontSize !== undefined) {
       data.fontSize = fontSize;
+    }
+    
+    if (x1 !== undefined) {
+      data.x1 = x1;
+    }
+    
+    if (y1 !== undefined) {
+      data.y1 = y1;
+    }
+    
+    if (x2 !== undefined) {
+      data.x2 = x2;
+    }
+    
+    if (y2 !== undefined) {
+      data.y2 = y2;
     }
     
     await set(dragRef, data);

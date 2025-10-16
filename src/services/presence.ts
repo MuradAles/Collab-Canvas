@@ -7,6 +7,7 @@
 import {
   ref,
   set,
+  update,
   onValue,
   onDisconnect,
   serverTimestamp,
@@ -124,26 +125,27 @@ export async function setUserOffline(userId: string): Promise<void> {
 /**
  * Update cursor position for a user
  * Uses canvas-relative coordinates (not screen coordinates)
- * NO THROTTLING - sends every update for ultra-smooth movement
- * Same approach as dragSync for insane speed
+ * Called by Canvas component which throttles updates using RAF (~60fps)
+ * This function itself is fire-and-forget for maximum speed
+ * 
+ * OPTIMIZATION: Single write instead of 3 separate writes (66% reduction!)
  */
 export function updateCursorPosition(
   userId: string,
   cursorX: number,
   cursorY: number
 ): void {
-  const cursorXRef = ref(rtdb, `sessions/${GLOBAL_CANVAS_ID}/${userId}/cursorX`);
-  const cursorYRef = ref(rtdb, `sessions/${GLOBAL_CANVAS_ID}/${userId}/cursorY`);
-  const lastSeenRef = ref(rtdb, `sessions/${GLOBAL_CANVAS_ID}/${userId}/lastSeen`);
+  const userRef = ref(rtdb, `sessions/${GLOBAL_CANVAS_ID}/${userId}`);
   
   // Fire-and-forget for maximum speed - don't await
-  // Update only cursor position fields (preserve other fields like displayName, color, isOnline)
+  // Update cursor position AND lastSeen in a SINGLE write (was 3 separate writes before!)
+  // Use update() to merge fields (preserves displayName, color, isOnline)
   // Use Date.now() instead of serverTimestamp for speed
-  Promise.all([
-    set(cursorXRef, cursorX),
-    set(cursorYRef, cursorY),
-    set(lastSeenRef, Date.now()),
-  ]).catch((error) => {
+  update(userRef, {
+    cursorX,
+    cursorY,
+    lastSeen: Date.now(),
+  }).catch((error) => {
     // Silently fail to avoid spamming console during rapid cursor movements
     if (import.meta.env.DEV) {
       console.warn('Failed to update cursor position:', error);

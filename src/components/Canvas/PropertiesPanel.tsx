@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useState, useEffect, memo, useRef } from 'react';
-import type { Shape, TextShape } from '../../types';
+import type { Shape, TextShape, LineShape } from '../../types';
 
 interface PropertiesPanelProps {
   selectedShape: Shape | null;
@@ -48,6 +48,9 @@ function PropertiesPanelComponent({ selectedShape, selectedCount, onUpdate, curr
     } else if (selectedShape.type === 'text') {
       setHasFill(selectedShape.fill !== 'transparent');
       setLocalFillColor(selectedShape.fill);
+    } else if (selectedShape.type === 'line') {
+      setHasStroke(selectedShape.stroke !== 'transparent');
+      setLocalStrokeColor(selectedShape.stroke);
     }
   }, [selectedShape]);
 
@@ -263,34 +266,36 @@ function PropertiesPanelComponent({ selectedShape, selectedCount, onUpdate, curr
           <div className="text-sm font-medium text-gray-900 capitalize">{selectedShape.type}</div>
         </div>
 
-        {/* Position */}
-        <div>
-          <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Position</div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs text-gray-600 mb-1 block">X</label>
-              <input
-                type="number"
-                value={Math.round(selectedShape.x)}
-                onChange={(e) => safeUpdate({ x: parseInt(e.target.value) || 0 }, true)}
-                onBlur={(e) => safeUpdate({ x: parseInt(e.target.value) || 0 }, false)}
-                disabled={isLockedByOther}
-                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-600 mb-1 block">Y</label>
-              <input
-                type="number"
-                value={Math.round(selectedShape.y)}
-                onChange={(e) => safeUpdate({ y: parseInt(e.target.value) || 0 }, true)}
-                onBlur={(e) => safeUpdate({ y: parseInt(e.target.value) || 0 }, false)}
-                disabled={isLockedByOther}
-                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-              />
+        {/* Position - Only for non-line shapes (lines use x1, y1, x2, y2) */}
+        {selectedShape.type !== 'line' && (
+          <div>
+            <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Position</div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-gray-600 mb-1 block">X</label>
+                <input
+                  type="number"
+                  value={Math.round(selectedShape.x)}
+                  onChange={(e) => safeUpdate({ x: parseInt(e.target.value) || 0 }, true)}
+                  onBlur={(e) => safeUpdate({ x: parseInt(e.target.value) || 0 }, false)}
+                  disabled={isLockedByOther}
+                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-600 mb-1 block">Y</label>
+                <input
+                  type="number"
+                  value={Math.round(selectedShape.y)}
+                  onChange={(e) => safeUpdate({ y: parseInt(e.target.value) || 0 }, true)}
+                  onBlur={(e) => safeUpdate({ y: parseInt(e.target.value) || 0 }, false)}
+                  disabled={isLockedByOther}
+                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                />
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Rectangle Properties */}
         {selectedShape.type === 'rectangle' && (
@@ -619,6 +624,71 @@ function PropertiesPanelComponent({ selectedShape, selectedCount, onUpdate, curr
               </div>
             </div>
 
+            {/* Text Formatting */}
+            <div>
+              <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Formatting</div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const currentStyle = selectedShape.fontStyle || 'normal';
+                    const isBold = currentStyle.includes('bold');
+                    const isItalic = currentStyle.includes('italic');
+                    let newStyle = 'normal';
+                    if (!isBold && isItalic) newStyle = 'bold italic';
+                    else if (!isBold && !isItalic) newStyle = 'bold';
+                    else if (isBold && isItalic) newStyle = 'italic';
+                    safeUpdate({ fontStyle: newStyle });
+                  }}
+                  disabled={isLockedByOther}
+                  className={`flex-1 px-3 py-2 text-sm font-bold border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                    (selectedShape.fontStyle || 'normal').includes('bold')
+                      ? 'bg-blue-500 text-white border-blue-500'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  title="Bold"
+                >
+                  B
+                </button>
+                <button
+                  onClick={() => {
+                    const currentStyle = selectedShape.fontStyle || 'normal';
+                    const isBold = currentStyle.includes('bold');
+                    const isItalic = currentStyle.includes('italic');
+                    let newStyle = 'normal';
+                    if (isBold && !isItalic) newStyle = 'bold italic';
+                    else if (!isBold && !isItalic) newStyle = 'italic';
+                    else if (isBold && isItalic) newStyle = 'bold';
+                    safeUpdate({ fontStyle: newStyle });
+                  }}
+                  disabled={isLockedByOther}
+                  className={`flex-1 px-3 py-2 text-sm italic border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                    (selectedShape.fontStyle || 'normal').includes('italic')
+                      ? 'bg-blue-500 text-white border-blue-500'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  title="Italic"
+                >
+                  I
+                </button>
+                <button
+                  onClick={() => {
+                    const currentDecoration = selectedShape.textDecoration || '';
+                    const isUnderlined = currentDecoration === 'underline';
+                    safeUpdate({ textDecoration: isUnderlined ? '' : 'underline' });
+                  }}
+                  disabled={isLockedByOther}
+                  className={`flex-1 px-3 py-2 text-sm underline border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
+                    selectedShape.textDecoration === 'underline'
+                      ? 'bg-blue-500 text-white border-blue-500'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  title="Underline"
+                >
+                  U
+                </button>
+              </div>
+            </div>
+
             {/* Text Color */}
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -658,6 +728,155 @@ function PropertiesPanelComponent({ selectedShape, selectedCount, onUpdate, curr
             </div>
           </>
         )}
+
+        {/* Line Properties */}
+        {selectedShape.type === 'line' && (
+          <>
+            {/* Start Point */}
+            <div>
+              <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Start Point</div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-gray-600 mb-1 block">X1</label>
+                  <input
+                    type="number"
+                    value={Math.round((selectedShape as LineShape).x1)}
+                    onChange={(e) => safeUpdate({ x1: parseInt(e.target.value) || 0 }, true)}
+                    onBlur={(e) => safeUpdate({ x1: parseInt(e.target.value) || 0 }, false)}
+                    disabled={isLockedByOther}
+                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600 mb-1 block">Y1</label>
+                  <input
+                    type="number"
+                    value={Math.round((selectedShape as LineShape).y1)}
+                    onChange={(e) => safeUpdate({ y1: parseInt(e.target.value) || 0 }, true)}
+                    onBlur={(e) => safeUpdate({ y1: parseInt(e.target.value) || 0 }, false)}
+                    disabled={isLockedByOther}
+                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* End Point */}
+            <div>
+              <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">End Point</div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-gray-600 mb-1 block">X2</label>
+                  <input
+                    type="number"
+                    value={Math.round((selectedShape as LineShape).x2)}
+                    onChange={(e) => safeUpdate({ x2: parseInt(e.target.value) || 0 }, true)}
+                    onBlur={(e) => safeUpdate({ x2: parseInt(e.target.value) || 0 }, false)}
+                    disabled={isLockedByOther}
+                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600 mb-1 block">Y2</label>
+                  <input
+                    type="number"
+                    value={Math.round((selectedShape as LineShape).y2)}
+                    onChange={(e) => safeUpdate({ y2: parseInt(e.target.value) || 0 }, true)}
+                    onBlur={(e) => safeUpdate({ y2: parseInt(e.target.value) || 0 }, false)}
+                    disabled={isLockedByOther}
+                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Line Stroke */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs text-gray-500 uppercase tracking-wide">Stroke</div>
+                <label className="flex items-center gap-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={hasStroke}
+                    onChange={(e) => handleStrokeToggle(e.target.checked)}
+                    disabled={isLockedByOther}
+                    className="w-3 h-3 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed"
+                  />
+                  <span className="text-xs text-gray-600">Visible</span>
+                </label>
+              </div>
+              {hasStroke && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={localStrokeColor}
+                    onChange={(e) => handleStrokeColorChange(e.target.value)}
+                    onBlur={handleStrokeColorBlur}
+                    disabled={isLockedByOther}
+                    className="w-12 h-10 rounded border border-gray-300 cursor-pointer disabled:cursor-not-allowed"
+                  />
+                  <input
+                    type="text"
+                    value={localStrokeColor}
+                    onChange={(e) => handleStrokeColorChange(e.target.value)}
+                    onBlur={handleStrokeColorBlur}
+                    disabled={isLockedByOther}
+                    className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono uppercase disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    placeholder="#000000"
+                  />
+                </div>
+              )}
+              {!hasStroke && (
+                <div className="text-xs text-gray-400 italic">Transparent</div>
+              )}
+            </div>
+
+            {/* Line Width */}
+            {hasStroke && (
+              <div>
+                <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Stroke Width</div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min="1"
+                    max="20"
+                    value={(selectedShape as LineShape).strokeWidth}
+                    onChange={(e) => throttledUpdate({ strokeWidth: parseInt(e.target.value) })}
+                    onMouseUp={(e) => onUpdate({ strokeWidth: parseInt((e.target as HTMLInputElement).value) }, false)}
+                    onTouchEnd={(e) => onUpdate({ strokeWidth: parseInt((e.target as HTMLInputElement).value) }, false)}
+                    disabled={isLockedByOther}
+                    className="flex-1 disabled:cursor-not-allowed"
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    value={(selectedShape as LineShape).strokeWidth}
+                    onChange={(e) => throttledUpdate({ strokeWidth: parseInt(e.target.value) || 1 })}
+                    onBlur={(e) => onUpdate({ strokeWidth: parseInt(e.target.value) || 1 }, false)}
+                    disabled={isLockedByOther}
+                    className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Line Cap */}
+            <div>
+              <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Line Cap</div>
+              <select
+                value={(selectedShape as LineShape).lineCap}
+                onChange={(e) => safeUpdate({ lineCap: e.target.value as 'butt' | 'round' | 'square' })}
+                disabled={isLockedByOther}
+                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+              >
+                <option value="butt">Butt</option>
+                <option value="round">Round</option>
+                <option value="square">Square</option>
+              </select>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -665,11 +884,87 @@ function PropertiesPanelComponent({ selectedShape, selectedCount, onUpdate, curr
 
 // Export memoized component to prevent unnecessary re-renders
 export const PropertiesPanel = memo(PropertiesPanelComponent, (prevProps, nextProps) => {
-  // Only re-render if selectedShape changed
-  return (
-    prevProps.selectedShape?.id === nextProps.selectedShape?.id &&
-    JSON.stringify(prevProps.selectedShape) === JSON.stringify(nextProps.selectedShape)
-  );
+  // Only re-render if selectedShape or selectedCount changed
+  // Compare only properties that affect PropertiesPanel UI (not JSON.stringify - too expensive!)
+  
+  // Check if selection count changed
+  if (prevProps.selectedCount !== nextProps.selectedCount) return false;
+  
+  // If no shape selected, don't re-render
+  if (!prevProps.selectedShape && !nextProps.selectedShape) return true;
+  
+  // If one is selected and other isn't, re-render
+  if (!prevProps.selectedShape || !nextProps.selectedShape) return false;
+  
+  // Compare only properties displayed in PropertiesPanel
+  const prev = prevProps.selectedShape;
+  const next = nextProps.selectedShape;
+  
+  // Check if it's the same shape
+  if (prev.id !== next.id || prev.type !== next.type) return false;
+  
+  // Check lock state (affects UI)
+  if (prev.isLocked !== next.isLocked || prev.lockedBy !== next.lockedBy) return false;
+  
+  // Type-specific property comparisons (only properties shown in PropertiesPanel)
+  if (prev.type === 'rectangle' && next.type === 'rectangle') {
+    return (
+      prev.name === next.name &&
+      prev.x === next.x &&
+      prev.y === next.y &&
+      prev.width === next.width &&
+      prev.height === next.height &&
+      prev.rotation === next.rotation &&
+      prev.fill === next.fill &&
+      prev.stroke === next.stroke &&
+      prev.strokeWidth === next.strokeWidth &&
+      prev.cornerRadius === next.cornerRadius
+    );
+  }
+  
+  if (prev.type === 'circle' && next.type === 'circle') {
+    return (
+      prev.name === next.name &&
+      prev.x === next.x &&
+      prev.y === next.y &&
+      prev.radius === next.radius &&
+      prev.rotation === next.rotation &&
+      prev.fill === next.fill &&
+      prev.stroke === next.stroke &&
+      prev.strokeWidth === next.strokeWidth
+    );
+  }
+  
+  if (prev.type === 'text' && next.type === 'text') {
+    return (
+      prev.name === next.name &&
+      prev.x === next.x &&
+      prev.y === next.y &&
+      prev.text === next.text &&
+      prev.fontSize === next.fontSize &&
+      prev.fontFamily === next.fontFamily &&
+      prev.fontStyle === next.fontStyle &&
+      prev.textDecoration === next.textDecoration &&
+      prev.rotation === next.rotation &&
+      prev.fill === next.fill &&
+      (prev.width || 0) === (next.width || 0)
+    );
+  }
+  
+  if (prev.type === 'line' && next.type === 'line') {
+    return (
+      prev.name === next.name &&
+      prev.x1 === next.x1 &&
+      prev.y1 === next.y1 &&
+      prev.x2 === next.x2 &&
+      prev.y2 === next.y2 &&
+      prev.stroke === next.stroke &&
+      prev.strokeWidth === next.strokeWidth &&
+      prev.lineCap === next.lineCap
+    );
+  }
+  
+  return true;
 });
 
 

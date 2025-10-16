@@ -8,6 +8,7 @@ import type Konva from 'konva';
 import type { Shape } from '../types';
 import { updateDragPosition, clearDragPosition } from '../services/dragSync';
 import { updateCursorPosition } from '../services/presence';
+import { updateShapesBatch } from '../services/canvas';
 import { screenToCanvas } from '../utils/helpers';
 
 interface UseShapeInteractionProps {
@@ -16,7 +17,7 @@ interface UseShapeInteractionProps {
   stageScale: number;
   currentUserId?: string;
   currentUserName?: string;
-  updateShape: (id: string, updates: Partial<Shape>) => Promise<void>;
+  updateShape: (id: string, updates: Partial<Shape>, localOnly?: boolean) => Promise<void>;
   selectedIds: string[];
   shapes: Shape[];
 }
@@ -43,10 +44,15 @@ export function useShapeInteraction({
     height?: number;
     radius?: number;
     fontSize?: number;
+    x1?: number;
+    y1?: number;
+    x2?: number;
+    y2?: number;
   } | null>(null);
   
   // Track initial positions of all selected shapes for group drag
-  const initialPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  // For lines, store endpoints; for others, store x, y
+  const initialPositionsRef = useRef<Map<string, { x: number; y: number; x1?: number; y1?: number; x2?: number; y2?: number }>>(new Map());
   
   // CRITICAL FIX: Keep a ref with the latest selectedIds to avoid stale closure issues
   // When you quickly select shapes and start dragging, the callback might have old selectedIds
@@ -100,17 +106,32 @@ export function useShapeInteraction({
       latestSelectedIds.forEach(id => {
         const shape = latestShapes.find(s => s.id === id);
         if (shape) {
-          initialPositionsRef.current.set(id, { x: shape.x, y: shape.y });
+          // Lines store endpoints for accurate delta calculation
+          if (shape.type === 'line') {
+            const centerX = (shape.x1 + shape.x2) / 2;
+            const centerY = (shape.y1 + shape.y2) / 2;
+            initialPositionsRef.current.set(id, { 
+              x: centerX, 
+              y: centerY,
+              x1: shape.x1,
+              y1: shape.y1,
+              x2: shape.x2,
+              y2: shape.y2
+            });
+          } else {
+            initialPositionsRef.current.set(id, { x: shape.x, y: shape.y });
+          }
         }
       });
       
       try {
         // Mark dragged shape as being dragged by current user
+        // Use localOnly: true for immediate visual feedback without Firebase lag
         await updateShape(shapeId, {
           isDragging: true,
           draggingBy: currentUserId,
           draggingByName: currentUserName || 'Unknown User',
-        });
+        }, true); // localOnly: true for instant feedback
 
         // Update cursor position at drag start
         updateCurrentCursorPosition();
@@ -157,38 +178,127 @@ export function useShapeInteraction({
               
               // Move all stored shapes by the same delta
               initialPositionsRef.current.forEach((initialShapePos, id) => {
-                // Update RTDB for real-time sync with other users
-                updateDragPosition(
-                  'global-canvas-v1',
-                  id,
-                  initialShapePos.x + deltaX,
-                  initialShapePos.y + deltaY,
-                  currentUserId,
-                  currentUserName || 'Unknown User'
-                ).catch(console.error);
-                
-                // ONLY update local state for OTHER shapes (not the one being dragged)
-                // This keeps dragging smooth - Konva handles the dragged shape, we move the others
-                if (id !== pending.shapeId) {
-                  updateShape(id, { 
-                    x: initialShapePos.x + deltaX, 
-                    y: initialShapePos.y + deltaY 
-                  }, true).catch(console.error);
+                // For lines, use INITIAL stored endpoints and apply delta
+                if (initialShapePos.x1 !== undefined && initialShapePos.y1 !== undefined && 
+                    initialShapePos.x2 !== undefined && initialShapePos.y2 !== undefined) {
+                  // Calculate new line endpoints from INITIAL position + delta (not current position!)
+                  const newX1 = initialShapePos.x1 + deltaX;
+                  const newY1 = initialShapePos.y1 + deltaY;
+                  const newX2 = initialShapePos.x2 + deltaX;
+                  const newY2 = initialShapePos.y2 + deltaY;
+                  const midX = (newX1 + newX2) / 2;
+                  const midY = (newY1 + newY2) / 2;
+                  
+                  // Send RTDB for ALL selected lines so other users see live updates
+                  updateDragPosition(
+                    'global-canvas-v1',
+                    id,
+                    midX,
+                    midY,
+                    currentUserId,
+                    currentUserName || 'Unknown User',
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    newX1,
+                    newY1,
+                    newX2,
+                    newY2
+                  ).catch(console.error);
+                  
+                  // Update local state for OTHER lines (not the dragged one)
+                  // The dragged line is handled by Konva's offset until drag ends
+                  if (id !== pending.shapeId) {
+                    updateShape(id, { 
+                      x1: newX1,
+                      y1: newY1,
+                      x2: newX2,
+                      y2: newY2
+                    } as Partial<Shape>, true).catch(console.error);
+                  }
+                } else {
+                  // Regular shapes use x, y
+                  // Send RTDB for ALL selected shapes so other users see live updates
+                  updateDragPosition(
+                    'global-canvas-v1',
+                    id,
+                    initialShapePos.x + deltaX,
+                    initialShapePos.y + deltaY,
+                    currentUserId,
+                    currentUserName || 'Unknown User'
+                  ).catch(console.error);
+                  
+                  // ONLY update local state for OTHER shapes (not the one being dragged)
+                  // Konva handles the dragged shape automatically, we update the others
+                  if (id !== pending.shapeId) {
+                    updateShape(id, { 
+                      x: initialShapePos.x + deltaX, 
+                      y: initialShapePos.y + deltaY 
+                    }, true).catch(console.error);
+                  }
                 }
               });
             }
           } else {
-            // Single shape drag - just update RTDB, let Konva handle the visual dragging
-            updateDragPosition(
-              'global-canvas-v1',
-              pending.shapeId,
-              pending.x,
-              pending.y,
-              currentUserId,
-              currentUserName || 'Unknown User'
-            ).catch(console.error);
+            // Single shape drag
+            // Check if it's a line - lines need RTDB updates with calculated endpoints
+            const shape = shapesRef.current.find(s => s.id === pending.shapeId);
             
-            // Don't update local state - let Konva handle smooth dragging
+            if (shape && shape.type === 'line') {
+              // For lines, only send RTDB update with coordinates
+              // Don't update local state - Konva handles visual dragging with offset
+              // We'll apply final position at drag end
+              const initialPos = initialPositionsRef.current.get(pending.shapeId);
+              if (initialPos && initialPos.x1 !== undefined && initialPos.y1 !== undefined &&
+                  initialPos.x2 !== undefined && initialPos.y2 !== undefined) {
+                const deltaX = pending.x - initialPos.x;
+                const deltaY = pending.y - initialPos.y;
+                
+                const newX1 = initialPos.x1 + deltaX;
+                const newY1 = initialPos.y1 + deltaY;
+                const newX2 = initialPos.x2 + deltaX;
+                const newY2 = initialPos.y2 + deltaY;
+                
+                // Update RTDB for network sync (other users see the movement)
+                updateDragPosition(
+                  'global-canvas-v1',
+                  pending.shapeId,
+                  pending.x,
+                  pending.y,
+                  currentUserId,
+                  currentUserName || 'Unknown User',
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  undefined,
+                  newX1,
+                  newY1,
+                  newX2,
+                  newY2
+                ).catch(console.error);
+              }
+            } else {
+              // Regular shapes (circle, rectangle, text)
+              // Update RTDB for network sync
+              updateDragPosition(
+                'global-canvas-v1',
+                pending.shapeId,
+                pending.x,
+                pending.y,
+                currentUserId,
+                currentUserName || 'Unknown User'
+              ).catch(console.error);
+              
+              // ALSO update local state for smooth dragging without Firebase lag
+              // This prevents React re-renders from resetting Konva's visual position
+              updateShape(pending.shapeId, {
+                x: pending.x,
+                y: pending.y
+              }, true).catch(console.error); // localOnly: true for instant feedback
+            }
           }
           
           // ALSO update cursor position during drag
@@ -199,7 +309,7 @@ export function useShapeInteraction({
         dragRafRef.current = null;
       });
     },
-    [currentUserId, currentUserName, updateCurrentCursorPosition, selectedIds, updateShape]
+    [currentUserId, currentUserName, updateCurrentCursorPosition, updateShape]
   );
 
   /**
@@ -240,34 +350,78 @@ export function useShapeInteraction({
             const deltaX = x - initialPos.x;
             const deltaY = y - initialPos.y;
             
-            // Save all selected shapes' final positions to Firestore
-            await Promise.all(
-              selectedIds.map(async (id) => {
-                const initialShapePos = initialPositionsRef.current.get(id);
-                if (initialShapePos) {
-                  await updateShape(id, {
-                    x: initialShapePos.x + deltaX,
-                    y: initialShapePos.y + deltaY,
-                    isDragging: false,
-                    draggingBy: null,
-                    draggingByName: null,
+            // OPTIMIZATION: Use batch writes for all shapes (1 network request instead of N!)
+            const batchUpdates: Array<{ shapeId: string; updates: Partial<Shape> }> = [];
+            
+            selectedIds.forEach((id) => {
+              const initialShapePos = initialPositionsRef.current.get(id);
+              const shape = shapesRef.current.find(s => s.id === id);
+              
+              if (initialShapePos && shape) {
+                // Handle lines differently - they use x1, y1, x2, y2
+                if (shape.type === 'line' && initialShapePos.x1 !== undefined && 
+                    initialShapePos.y1 !== undefined && initialShapePos.x2 !== undefined && 
+                    initialShapePos.y2 !== undefined) {
+                  // CRITICAL: Use INITIAL position + delta, not current position!
+                  // Current position already includes local updates from drag
+                  batchUpdates.push({
+                    shapeId: id,
+                    updates: {
+                      x1: initialShapePos.x1 + deltaX,
+                      y1: initialShapePos.y1 + deltaY,
+                      x2: initialShapePos.x2 + deltaX,
+                      y2: initialShapePos.y2 + deltaY,
+                      isDragging: false,
+                      draggingBy: null,
+                      draggingByName: null,
+                    },
                   });
-                  
-                  // Clear RTDB position for each shape
-                  await clearDragPosition('global-canvas-v1', id);
+                } else {
+                  batchUpdates.push({
+                    shapeId: id,
+                    updates: {
+                      x: initialShapePos.x + deltaX,
+                      y: initialShapePos.y + deltaY,
+                      isDragging: false,
+                      draggingBy: null,
+                      draggingByName: null,
+                    },
+                  });
                 }
-              })
+              }
+            });
+            
+            // Save all shapes in a single batch write
+            if (batchUpdates.length > 0) {
+              await updateShapesBatch(batchUpdates);
+            }
+            
+            // Clear RTDB positions for all shapes
+            await Promise.all(
+              selectedIds.map((id) => clearDragPosition('global-canvas-v1', id))
             );
           }
         } else {
           // Single shape drag - save only the dragged shape
-          await updateShape(shapeId, {
-            x,
-            y,
-            isDragging: false,
-            draggingBy: null,
-            draggingByName: null,
-          });
+          // Note: For lines, the Shape component already called onTransformEnd with x1, y1, x2, y2
+          // so we don't need to update x, y here. Just clear the drag state.
+          const shape = shapesRef.current.find(s => s.id === shapeId);
+          if (shape && shape.type !== 'line') {
+            await updateShape(shapeId, {
+              x,
+              y,
+              isDragging: false,
+              draggingBy: null,
+              draggingByName: null,
+            });
+          } else {
+            // For lines, just clear drag state (coordinates already updated via onTransformEnd)
+            await updateShape(shapeId, {
+              isDragging: false,
+              draggingBy: null,
+              draggingByName: null,
+            });
+          }
           
           // Then clear real-time drag position from RTDB
           await clearDragPosition('global-canvas-v1', shapeId);
@@ -291,7 +445,7 @@ export function useShapeInteraction({
    * Also update cursor position during transformation
    */
   const handleShapeTransform = useCallback(
-    (shapeId: string, x: number, y: number, rotation: number, width?: number, height?: number, radius?: number, fontSize?: number) => {
+    (shapeId: string, x: number, y: number, rotation: number, width?: number, height?: number, radius?: number, fontSize?: number, x1?: number, y1?: number, x2?: number, y2?: number) => {
       if (!currentUserId) return;
       
       // Cancel any pending RAF
@@ -300,7 +454,7 @@ export function useShapeInteraction({
       }
       
       // Store pending update (with transformation data)
-      pendingDragUpdateRef.current = { shapeId, x, y, rotation, width, height, radius, fontSize };
+      pendingDragUpdateRef.current = { shapeId, x, y, rotation, width, height, radius, fontSize, x1, y1, x2, y2 };
       
       // Schedule update on next frame (max 60fps)
       dragRafRef.current = requestAnimationFrame(() => {
@@ -318,8 +472,15 @@ export function useShapeInteraction({
             pending.width,
             pending.height,
             pending.radius,
-            pending.fontSize
+            pending.fontSize,
+            pending.x1,
+            pending.y1,
+            pending.x2,
+            pending.y2
           ).catch(console.error);
+          
+          // Don't update local state during drag - Konva handles visual dragging
+          // Only RTDB updates are needed for other users to see the changes
           
           // ALSO update cursor position during transformation
           updateCurrentCursorPosition();

@@ -7,7 +7,7 @@
 // Shape Types
 // ============================================================================
 
-export type ShapeType = 'rectangle' | 'circle' | 'text';
+export type ShapeType = 'rectangle' | 'circle' | 'text' | 'line';
 
 export interface BaseShape {
   id: string;
@@ -50,9 +50,24 @@ export interface TextShape extends BaseShape {
   fontFamily: string;
   fill: string;
   width?: number;
+  fontStyle?: string; // 'normal', 'bold', 'italic', 'bold italic'
+  textDecoration?: string; // 'none', 'underline'
 }
 
-export type Shape = RectangleShape | CircleShape | TextShape;
+export interface LineShape extends Omit<BaseShape, 'x' | 'y' | 'rotation'> {
+  type: 'line';
+  // Line endpoints - stored as absolute coordinates
+  // Lines don't use x, y, or rotation - they're defined entirely by endpoints
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  stroke: string;
+  strokeWidth: number;
+  lineCap: 'butt' | 'round' | 'square';
+}
+
+export type Shape = RectangleShape | CircleShape | TextShape | LineShape;
 
 export interface ShapeUpdate {
   x?: number;
@@ -68,6 +83,8 @@ export interface ShapeUpdate {
   text?: string;
   fontSize?: number;
   fontFamily?: string;
+  fontStyle?: string;
+  textDecoration?: string;
   name?: string;
   isLocked?: boolean;
   lockedBy?: string | null;
@@ -75,6 +92,12 @@ export interface ShapeUpdate {
   isDragging?: boolean;
   draggingBy?: string | null;
   draggingByName?: string | null;
+  // Line-specific properties
+  x1?: number;
+  y1?: number;
+  x2?: number;
+  y2?: number;
+  lineCap?: 'butt' | 'round' | 'square';
 }
 
 // ============================================================================

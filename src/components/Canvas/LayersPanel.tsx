@@ -350,6 +350,11 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
                           r = {Math.round(shape.radius)}
                         </div>
                       )}
+                      {shape.type === 'line' && (
+                        <div className="text-xs text-gray-500">
+                          {Math.round(Math.sqrt(Math.pow(shape.x2 - shape.x1, 2) + Math.pow(shape.y2 - shape.y1, 2)))} px
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -387,13 +392,31 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
 
 // Export memoized component to prevent unnecessary re-renders
 export const LayersPanel = memo(LayersPanelComponent, (prevProps, nextProps) => {
-  // Only re-render if shapes array changed, selectedIds changed, or callbacks changed
-  return (
-    prevProps.selectedIds.length === nextProps.selectedIds.length &&
-    prevProps.selectedIds.every((id, index) => id === nextProps.selectedIds[index]) &&
-    prevProps.shapes.length === nextProps.shapes.length &&
-    prevProps.shapes.every((shape, index) => 
-      JSON.stringify(shape) === JSON.stringify(nextProps.shapes[index])
-    )
-  );
+  // Only re-render if shapes array changed or selectedIds changed
+  // Compare only properties that affect LayersPanel UI (not JSON.stringify - too expensive!)
+  
+  // Check if selected IDs changed
+  if (prevProps.selectedIds.length !== nextProps.selectedIds.length) return false;
+  if (!prevProps.selectedIds.every((id, index) => id === nextProps.selectedIds[index])) return false;
+  
+  // Check if shapes changed (only compare properties displayed in LayersPanel)
+  if (prevProps.shapes.length !== nextProps.shapes.length) return false;
+  
+  // Compare only critical properties that affect LayersPanel rendering:
+  // - id, name, zIndex (what we display)
+  // - isDragging, draggingBy (visual indicators)
+  // - isLocked, lockedBy (lock icons)
+  return prevProps.shapes.every((shape, index) => {
+    const nextShape = nextProps.shapes[index];
+    return (
+      shape.id === nextShape.id &&
+      shape.name === nextShape.name &&
+      shape.zIndex === nextShape.zIndex &&
+      shape.type === nextShape.type &&
+      shape.isDragging === nextShape.isDragging &&
+      shape.draggingBy === nextShape.draggingBy &&
+      shape.isLocked === nextShape.isLocked &&
+      shape.lockedBy === nextShape.lockedBy
+    );
+  });
 });

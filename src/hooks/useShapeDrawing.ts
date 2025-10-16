@@ -6,7 +6,7 @@
 import { useState, useCallback } from 'react';
 import type Konva from 'konva';
 import type { Tool } from '../components/Canvas/ToolSelector';
-import type { RectangleShape, CircleShape, TextShape } from '../types';
+import type { RectangleShape, CircleShape, TextShape, LineShape } from '../types';
 import { screenToCanvas, normalizeRectangle } from '../utils/helpers';
 import {
   DEFAULT_SHAPE_FILL,
@@ -26,13 +26,20 @@ interface NewShapePreview {
   height: number;
 }
 
+interface NewLinePreview {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
 interface UseShapeDrawingProps {
   stageRef: React.RefObject<Konva.Stage | null>;
   stagePosition: { x: number; y: number };
   stageScale: number;
   selectedTool: Tool;
   setSelectedTool: (tool: Tool) => void;
-  addShape: (shape: Omit<RectangleShape | CircleShape | TextShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>) => Promise<void>;
+  addShape: (shape: Omit<RectangleShape | CircleShape | TextShape | LineShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>) => Promise<void>;
   onTextCreated?: (shapeId: string) => void;
 }
 
@@ -48,6 +55,7 @@ export function useShapeDrawing({
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
   const [newShapePreview, setNewShapePreview] = useState<NewShapePreview | null>(null);
+  const [newLinePreview, setNewLinePreview] = useState<NewLinePreview | null>(null);
 
   /**
    * Handle mouse down - start shape creation
@@ -62,7 +70,7 @@ export function useShapeDrawing({
       }
 
       // Only start drawing if a shape or text tool is selected
-      if (selectedTool === 'rectangle' || selectedTool === 'circle' || selectedTool === 'text') {
+      if (selectedTool === 'rectangle' || selectedTool === 'circle' || selectedTool === 'line' || selectedTool === 'text') {
         const stage = stageRef.current;
         if (!stage) return;
 
@@ -87,6 +95,16 @@ export function useShapeDrawing({
             width: 0,
             height: 0,
           });
+        } else if (selectedTool === 'line') {
+          // For lines, start point is where user clicks
+          setIsDrawing(true);
+          setDrawStart(canvasPos);
+          setNewLinePreview({
+            x1: canvasPos.x,
+            y1: canvasPos.y,
+            x2: canvasPos.x,
+            y2: canvasPos.y,
+          });
         } else if (selectedTool === 'text') {
           // Create text immediately at click position with default "Text" content
           const textShape: Omit<TextShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'> = {
@@ -99,6 +117,8 @@ export function useShapeDrawing({
             fontSize: DEFAULT_TEXT_SIZE,
             fontFamily: DEFAULT_TEXT_FONT,
             fill: DEFAULT_TEXT_FILL,
+            fontStyle: 'normal',
+            textDecoration: '',
           };
           
           // Add shape and notify parent to enable editing
@@ -123,7 +143,7 @@ export function useShapeDrawing({
    * Handle mouse move - update shape preview while drawing
    */
   const handleDrawMove = useCallback(() => {
-    if (!isDrawing || !drawStart || (selectedTool !== 'rectangle' && selectedTool !== 'circle')) return;
+    if (!isDrawing || !drawStart) return;
 
     const stage = stageRef.current;
     if (!stage) return;
@@ -139,62 +159,98 @@ export function useShapeDrawing({
       stageScale
     );
 
-    const normalized = normalizeRectangle(
-      drawStart.x,
-      drawStart.y,
-      canvasPos.x,
-      canvasPos.y
-    );
-
-    setNewShapePreview(normalized);
+    if (selectedTool === 'rectangle' || selectedTool === 'circle') {
+      const normalized = normalizeRectangle(
+        drawStart.x,
+        drawStart.y,
+        canvasPos.x,
+        canvasPos.y
+      );
+      setNewShapePreview(normalized);
+    } else if (selectedTool === 'line') {
+      // Update line end point
+      setNewLinePreview({
+        x1: drawStart.x,
+        y1: drawStart.y,
+        x2: canvasPos.x,
+        y2: canvasPos.y,
+      });
+    }
   }, [isDrawing, drawStart, stageRef, stagePosition, stageScale, selectedTool]);
 
   /**
    * Handle mouse up - finish drawing a shape
    */
   const handleDrawEnd = useCallback(async () => {
-    if (!isDrawing || !newShapePreview || (selectedTool !== 'rectangle' && selectedTool !== 'circle')) {
+    if (!isDrawing) {
       setIsDrawing(false);
       setDrawStart(null);
       setNewShapePreview(null);
+      setNewLinePreview(null);
       return;
     }
 
-    // Only create shape if it's large enough
-    if (
-      newShapePreview.width >= MIN_SHAPE_SIZE &&
-      newShapePreview.height >= MIN_SHAPE_SIZE
-    ) {
-      if (selectedTool === 'rectangle') {
-        const rectShape: Omit<RectangleShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'> = {
-          type: 'rectangle',
-          x: newShapePreview.x,
-          y: newShapePreview.y,
-          width: newShapePreview.width,
-          height: newShapePreview.height,
-          rotation: 0,
+    // Handle rectangle/circle
+    if ((selectedTool === 'rectangle' || selectedTool === 'circle') && newShapePreview) {
+      // Only create shape if it's large enough
+      if (
+        newShapePreview.width >= MIN_SHAPE_SIZE &&
+        newShapePreview.height >= MIN_SHAPE_SIZE
+      ) {
+        if (selectedTool === 'rectangle') {
+          const rectShape: Omit<RectangleShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'> = {
+            type: 'rectangle',
+            x: newShapePreview.x,
+            y: newShapePreview.y,
+            width: newShapePreview.width,
+            height: newShapePreview.height,
+            rotation: 0,
+            zIndex: 0,
+            fill: DEFAULT_SHAPE_FILL,
+            stroke: DEFAULT_SHAPE_STROKE,
+            strokeWidth: DEFAULT_SHAPE_STROKE_WIDTH,
+            cornerRadius: DEFAULT_CORNER_RADIUS,
+          };
+          await addShape(rectShape);
+        } else if (selectedTool === 'circle') {
+          // Create circle based on drag size
+          const radius = Math.max(newShapePreview.width, newShapePreview.height) / 2;
+          const circleShape: Omit<CircleShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'> = {
+            type: 'circle',
+            x: newShapePreview.x + newShapePreview.width / 2,
+            y: newShapePreview.y + newShapePreview.height / 2,
+            radius: radius,
+            rotation: 0,
+            zIndex: 0,
+            fill: DEFAULT_SHAPE_FILL,
+            stroke: DEFAULT_SHAPE_STROKE,
+            strokeWidth: DEFAULT_SHAPE_STROKE_WIDTH,
+          };
+          await addShape(circleShape);
+        }
+      }
+    } 
+    // Handle line
+    else if (selectedTool === 'line' && newLinePreview) {
+      // Calculate line length to ensure it's not too short
+      const dx = newLinePreview.x2 - newLinePreview.x1;
+      const dy = newLinePreview.y2 - newLinePreview.y1;
+      const length = Math.sqrt(dx * dx + dy * dy);
+
+      if (length >= MIN_SHAPE_SIZE) {
+        const lineShape: Omit<LineShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'> = {
+          type: 'line',
+          // Lines use absolute x1, y1, x2, y2 coordinates - no need for x, y, or rotation
+          x1: newLinePreview.x1,
+          y1: newLinePreview.y1,
+          x2: newLinePreview.x2,
+          y2: newLinePreview.y2,
           zIndex: 0,
-          fill: DEFAULT_SHAPE_FILL,
           stroke: DEFAULT_SHAPE_STROKE,
           strokeWidth: DEFAULT_SHAPE_STROKE_WIDTH,
-          cornerRadius: DEFAULT_CORNER_RADIUS,
+          lineCap: 'round',
         };
-        await addShape(rectShape);
-      } else if (selectedTool === 'circle') {
-        // Create circle based on drag size
-        const radius = Math.max(newShapePreview.width, newShapePreview.height) / 2;
-        const circleShape: Omit<CircleShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'> = {
-          type: 'circle',
-          x: newShapePreview.x + newShapePreview.width / 2,
-          y: newShapePreview.y + newShapePreview.height / 2,
-          radius: radius,
-          rotation: 0,
-          zIndex: 0,
-          fill: DEFAULT_SHAPE_FILL,
-          stroke: DEFAULT_SHAPE_STROKE,
-          strokeWidth: DEFAULT_SHAPE_STROKE_WIDTH,
-        };
-        await addShape(circleShape);
+        await addShape(lineShape);
       }
     }
 
@@ -202,11 +258,13 @@ export function useShapeDrawing({
     setIsDrawing(false);
     setDrawStart(null);
     setNewShapePreview(null);
-  }, [isDrawing, newShapePreview, addShape, selectedTool]);
+    setNewLinePreview(null);
+  }, [isDrawing, newShapePreview, newLinePreview, addShape, selectedTool]);
 
   return {
     isDrawing,
     newShapePreview,
+    newLinePreview,
     handleDrawStart,
     handleDrawMove,
     handleDrawEnd,

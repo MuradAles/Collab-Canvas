@@ -6,7 +6,7 @@
 import type { ReactNode } from 'react';
 import { ShapeDropdown, type ShapeTool } from './ShapeDropdown';
 
-export type Tool = 'select' | 'rectangle' | 'circle' | 'text';
+export type Tool = 'select' | 'rectangle' | 'circle' | 'line' | 'text';
 
 interface ToolSelectorProps {
   selectedTool: Tool;
@@ -14,7 +14,7 @@ interface ToolSelectorProps {
 }
 
 export function ToolSelector({ selectedTool, onToolChange }: ToolSelectorProps) {
-  const isShapeTool = selectedTool === 'rectangle' || selectedTool === 'circle';
+  const isShapeTool = selectedTool === 'rectangle' || selectedTool === 'circle' || selectedTool === 'line';
   
   const tools: { id: 'select' | 'text'; label: string; icon: ReactNode; shortcut: string }[] = [
     {

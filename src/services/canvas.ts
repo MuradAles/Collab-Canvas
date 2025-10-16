@@ -180,6 +180,31 @@ export async function updateShape(
 }
 
 /**
+ * Batch update multiple shapes at once
+ * OPTIMIZATION: Uses Firestore batch writes for 1 network round trip instead of N
+ * Perfect for multi-select drag operations
+ */
+export async function updateShapesBatch(
+  updates: Array<{ shapeId: string; updates: Partial<Shape> }>
+): Promise<void> {
+  try {
+    const batch = writeBatch(db);
+    
+    // Add all updates to the batch
+    updates.forEach(({ shapeId, updates: shapeUpdates }) => {
+      const shapeRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID, SHAPES_SUBCOLLECTION, shapeId);
+      batch.update(shapeRef, shapeUpdates);
+    });
+    
+    // Commit all updates in a single network request
+    await batch.commit();
+  } catch (error) {
+    console.error('Failed to batch update shapes:', error);
+    throw new Error('Failed to batch update shapes');
+  }
+}
+
+/**
  * Delete a shape from the canvas
  * Only allows deletion if shape is not locked by another user
  * NEW: Deletes only the specific shape document

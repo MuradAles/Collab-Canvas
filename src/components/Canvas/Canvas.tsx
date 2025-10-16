@@ -32,6 +32,23 @@ import { useTextEditing } from '../../hooks/useTextEditing';
 import { useShapeInteraction } from '../../hooks/useShapeInteraction';
 import type { TextShape, ShapeUpdate } from '../../types';
 
+// ============================================================================
+// Performance Configuration
+// ============================================================================
+
+/**
+ * Cursor update throttle in milliseconds
+ * - Set to 0 to use RAF (requestAnimationFrame) - automatically ~16.67ms on 60Hz displays
+ * - Set to a number (e.g., 16, 32, 50) for custom throttle timing
+ * 
+ * Recommended values:
+ * - 0 (RAF): Best for smooth 60fps updates on most displays
+ * - 16: Same as RAF on 60Hz displays, explicit timing
+ * - 32: ~30fps updates, good balance of smoothness and network efficiency
+ * - 50: ~20fps updates, more network-friendly but less smooth
+ */
+const CURSOR_THROTTLE_MS = 0; // 0 = use RAF (~16ms on 60Hz)
+
 export function Canvas() {
   const stageRef = useRef<Konva.Stage | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -45,6 +62,13 @@ export function Canvas() {
   
   const [showGrid, setShowGrid] = useState(true);
   const [selectedTool, setSelectedTool] = useState<Tool>('select');
+  
+  // Throttling for cursor position updates
+  // Supports both RAF (requestAnimationFrame) and time-based throttling
+  const cursorRafRef = useRef<number | null>(null);
+  const cursorTimeoutRef = useRef<number | null>(null);
+  const lastCursorUpdateRef = useRef<number>(0);
+  const pendingCursorUpdateRef = useRef<{ x: number; y: number } | null>(null);
 
   const { shapes, selectedIds, selectShape, addShape, updateShape, deleteShape, reorderShapes, loading } = useCanvasContext();
   const { currentUser } = useAuth();
@@ -124,6 +148,20 @@ export function Canvas() {
   });
 
   /**
+   * Cleanup timers on unmount
+   */
+  useEffect(() => {
+    return () => {
+      if (cursorRafRef.current !== null) {
+        cancelAnimationFrame(cursorRafRef.current);
+      }
+      if (cursorTimeoutRef.current !== null) {
+        clearTimeout(cursorTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  /**
    * Handle window resize
    */
   useEffect(() => {
@@ -142,7 +180,7 @@ export function Canvas() {
 
   /**
    * Track mouse movements and update cursor position
-   * NO THROTTLING - sends every update for insane speed like dragSync
+   * Supports both RAF throttling and time-based throttling based on CURSOR_THROTTLE_MS
    */
   const handleCursorTracking = useCallback(
     () => {
@@ -161,8 +199,63 @@ export function Canvas() {
         stageScale
       );
 
-      // Update cursor position in RTDB (no throttling - fire and forget)
-      updateCursorPosition(currentUser.uid, canvasPos.x, canvasPos.y);
+      // Mode 1: RAF throttling (when CURSOR_THROTTLE_MS === 0)
+      // Best for smooth 60fps updates aligned with display refresh
+      if (CURSOR_THROTTLE_MS === 0) {
+        // Cancel any pending RAF
+        if (cursorRafRef.current !== null) {
+          cancelAnimationFrame(cursorRafRef.current);
+        }
+
+        // Store pending cursor update
+        pendingCursorUpdateRef.current = { x: canvasPos.x, y: canvasPos.y };
+
+        // Schedule update on next animation frame (max 60fps = ~16.67ms on 60Hz displays)
+        cursorRafRef.current = requestAnimationFrame(() => {
+          const pending = pendingCursorUpdateRef.current;
+          if (pending && currentUser) {
+            // Fire-and-forget for maximum speed - don't await
+            updateCursorPosition(currentUser.uid, pending.x, pending.y);
+            pendingCursorUpdateRef.current = null;
+          }
+          cursorRafRef.current = null;
+        });
+      } 
+      // Mode 2: Time-based throttling (when CURSOR_THROTTLE_MS > 0)
+      // Allows precise control over update frequency
+      else {
+        const now = Date.now();
+        const timeSinceLastUpdate = now - lastCursorUpdateRef.current;
+
+        // Store the latest position
+        pendingCursorUpdateRef.current = { x: canvasPos.x, y: canvasPos.y };
+
+        // If enough time has passed, update immediately
+        if (timeSinceLastUpdate >= CURSOR_THROTTLE_MS) {
+          updateCursorPosition(currentUser.uid, canvasPos.x, canvasPos.y);
+          lastCursorUpdateRef.current = now;
+          pendingCursorUpdateRef.current = null;
+          
+          // Clear any pending timeout
+          if (cursorTimeoutRef.current !== null) {
+            clearTimeout(cursorTimeoutRef.current);
+            cursorTimeoutRef.current = null;
+          }
+        } 
+        // Otherwise, schedule an update if not already scheduled
+        else if (cursorTimeoutRef.current === null) {
+          const remainingTime = CURSOR_THROTTLE_MS - timeSinceLastUpdate;
+          cursorTimeoutRef.current = setTimeout(() => {
+            const pending = pendingCursorUpdateRef.current;
+            if (pending && currentUser) {
+              updateCursorPosition(currentUser.uid, pending.x, pending.y);
+              lastCursorUpdateRef.current = Date.now();
+              pendingCursorUpdateRef.current = null;
+            }
+            cursorTimeoutRef.current = null;
+          }, remainingTime);
+        }
+      }
     },
     [currentUser, stagePosition, stageScale]
   );
@@ -375,7 +468,7 @@ export function Canvas() {
                   onDragMove={(x, y) => handleShapeDragMove(shape.id, x, y)}
                   onDragEnd={(x, y) => handleShapeDragEnd(shape.id, x, y)}
                   onTransformEnd={(updates) => handleShapeTransformEnd(shape.id, updates)}
-                  onTransform={(x, y, rotation, width, height, radius, fontSize) => handleShapeTransform(shape.id, x, y, rotation, width, height, radius, fontSize)}
+                  onTransform={(x, y, rotation, width, height, radius, fontSize, x1, y1, x2, y2) => handleShapeTransform(shape.id, x, y, rotation, width, height, radius, fontSize, x1, y1, x2, y2)}
                   isDraggable={selectedTool === 'select'}
                   currentUserId={currentUser?.uid}
                   onDoubleClick={shape.type === 'text' ? () => handleTextDoubleClick(shape) : undefined}
@@ -398,7 +491,7 @@ export function Canvas() {
                   onDragMove={(x, y) => handleShapeDragMove(selectedId, x, y)}
                   onDragEnd={(x, y) => handleShapeDragEnd(selectedId, x, y)}
                   onTransformEnd={(updates) => handleShapeTransformEnd(selectedId, updates)}
-                  onTransform={(x, y, rotation, width, height, radius, fontSize) => handleShapeTransform(selectedId, x, y, rotation, width, height, radius, fontSize)}
+                  onTransform={(x, y, rotation, width, height, radius, fontSize, x1, y1, x2, y2) => handleShapeTransform(selectedId, x, y, rotation, width, height, radius, fontSize, x1, y1, x2, y2)}
                   isDraggable={selectedTool === 'select'}
                   currentUserId={currentUser?.uid}
                   onDoubleClick={shape.type === 'text' ? () => handleTextDoubleClick(shape as TextShape) : undefined}

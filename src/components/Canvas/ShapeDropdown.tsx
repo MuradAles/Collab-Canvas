@@ -6,7 +6,7 @@
 import { useState, useRef, useEffect } from 'react';
 import type { JSX } from 'react';
 
-export type ShapeTool = 'rectangle' | 'circle';
+export type ShapeTool = 'rectangle' | 'circle' | 'line';
 
 interface ShapeDropdownProps {
   selectedShape: ShapeTool;
@@ -34,6 +34,15 @@ export function ShapeDropdown({ selectedShape, onShapeChange, isActive }: ShapeD
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <circle cx="12" cy="12" r="9" strokeWidth={2} />
+        </svg>
+      ),
+    },
+    {
+      id: 'line',
+      label: 'Line',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <line x1="4" y1="20" x2="20" y2="4" strokeWidth={2} strokeLinecap="round" />
         </svg>
       ),
     },
