@@ -35,10 +35,8 @@ export function LineShape({
   onAnchorDrag,
   onAnchorDragEnd,
 }: LineShapeProps) {
-  const anchorRadiusLarge = 8;
-
-  // Console log for debugging line position
-  console.log(`[LineShape Render] ${shape.id}:`, shape.x1, shape.y1, shape.x2, shape.y2);
+  // Match transformer anchor size (anchorSize=8 means 8x8 box, so radius=4 for circle)
+  const anchorRadius = 4;
 
   return (
     <Group
@@ -76,7 +74,7 @@ export function LineShape({
           <Circle
             x={shape.x1}
             y={shape.y1}
-            radius={anchorRadiusLarge}
+            radius={anchorRadius}
             fill="white"
             stroke={SELECTION_STROKE}
             strokeWidth={2}
@@ -105,7 +103,7 @@ export function LineShape({
           <Circle
             x={shape.x2}
             y={shape.y2}
-            radius={anchorRadiusLarge}
+            radius={anchorRadius}
             fill="white"
             stroke={SELECTION_STROKE}
             strokeWidth={2}

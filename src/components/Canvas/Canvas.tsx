@@ -407,6 +407,73 @@ export function Canvas() {
         ref={containerRef}
         className="flex-1 relative bg-gray-100 overflow-hidden min-w-0"
       >
+        {/* Text Editing Overlay - positioned within canvas container */}
+        {editingTextId && getTextEditPosition() && (
+          <textarea
+            ref={textAreaRef}
+            value={textAreaValue}
+            onChange={(e) => {
+              const newValue = e.target.value;
+              setTextAreaValue(newValue);
+              // Update canvas text in real-time (local only, no Firebase)
+              if (editingTextId) {
+                updateShape(editingTextId, { text: newValue }, true);
+              }
+              // Auto-resize textarea height to fit content
+              if (textAreaRef.current) {
+                textAreaRef.current.style.height = 'auto';
+                textAreaRef.current.style.height = `${textAreaRef.current.scrollHeight}px`;
+              }
+            }}
+            onBlur={handleTextEditEnd}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault(); // Prevent new line
+                handleTextEditEnd(); // Submit on Enter
+              } else if (e.key === 'Escape') {
+                handleTextEditEnd();
+              }
+              e.stopPropagation();
+            }}
+            style={{
+              position: 'absolute',
+              left: `${getTextEditPosition()!.x}px`,
+              top: `${getTextEditPosition()!.y}px`,
+              width: `${getTextEditPosition()!.width}px`,
+              height: 'auto',
+              fontSize: `${getTextEditPosition()!.shape.fontSize * stageScale}px`,
+              fontFamily: getTextEditPosition()!.shape.fontFamily,
+              fontStyle: getTextEditPosition()!.shape.fontStyle || 'normal',
+              textDecoration: getTextEditPosition()!.shape.textDecoration || 'none',
+              color: 'transparent',
+              border: 'none',
+              background: 'transparent',
+              padding: '0',
+              margin: '0',
+              resize: 'none',
+              outline: 'none',
+              boxShadow: 'none',
+              lineHeight: '1',
+              textAlign: 'left',
+              verticalAlign: 'top',
+              overflow: 'hidden',
+              overflowY: 'hidden',
+              zIndex: 1000,
+              boxSizing: 'border-box',
+              whiteSpace: 'pre-wrap',
+              wordWrap: 'break-word',
+              caretColor: getTextEditPosition()!.shape.fill,
+            }}
+            autoFocus
+            onInput={(e) => {
+              // Auto-resize on input as well
+              const target = e.target as HTMLTextAreaElement;
+              target.style.height = 'auto';
+              target.style.height = `${target.scrollHeight}px`;
+            }}
+          />
+        )}
+
         {/* Grid Toggle */}
         <GridToggle showGrid={showGrid} onToggle={handleToggleGrid} />
 
@@ -587,42 +654,6 @@ export function Canvas() {
           </div>
         </div>
       </div>
-
-      {/* Text Editing Overlay */}
-      {editingTextId && getTextEditPosition() && (
-        <textarea
-          ref={textAreaRef}
-          value={textAreaValue}
-          onChange={(e) => setTextAreaValue(e.target.value)}
-          onBlur={handleTextEditEnd}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              handleTextEditEnd();
-            }
-            // Don't close on Enter - allow multiline text
-            e.stopPropagation();
-          }}
-          style={{
-            position: 'absolute',
-            left: `${getTextEditPosition()!.x}px`,
-            top: `${getTextEditPosition()!.y}px`,
-            fontSize: `${getTextEditPosition()!.shape.fontSize * stageScale}px`,
-            fontFamily: getTextEditPosition()!.shape.fontFamily,
-            color: getTextEditPosition()!.shape.fill,
-            border: '2px solid #3b82f6',
-            background: 'white',
-            padding: '4px',
-            resize: 'none',
-            outline: 'none',
-            minWidth: '100px',
-            minHeight: `${getTextEditPosition()!.shape.fontSize * stageScale + 8}px`,
-            lineHeight: '1.2',
-            overflow: 'hidden',
-            zIndex: 1000,
-          }}
-          autoFocus
-        />
-      )}
 
       {/* Properties Panel */}
       <PropertiesPanel

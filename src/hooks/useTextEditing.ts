@@ -10,7 +10,7 @@ interface UseTextEditingProps {
   shapes: Shape[];
   stageScale: number;
   stagePosition: { x: number; y: number };
-  updateShape: (id: string, updates: Partial<Shape>) => Promise<void>;
+  updateShape: (id: string, updates: Partial<Shape>, localOnly?: boolean) => Promise<void>;
   deleteShape: (id: string) => Promise<void>;
 }
 
@@ -62,13 +62,14 @@ export function useTextEditing({
   }, [shapes]);
 
   /**
-   * Finish editing text and update shape
+   * Finish editing text and save to Firebase
    */
   const handleTextEditEnd = useCallback(() => {
     if (editingTextId) {
       const trimmedText = textAreaValue.trim();
       if (trimmedText) {
-        updateShape(editingTextId, { text: trimmedText });
+        // Save final text to Firebase (not localOnly)
+        updateShape(editingTextId, { text: trimmedText }, false);
       } else {
         // If text is empty, delete the shape
         deleteShape(editingTextId);
@@ -79,17 +80,21 @@ export function useTextEditing({
   }, [editingTextId, textAreaValue, updateShape, deleteShape]);
 
   /**
-   * Auto-focus textarea when editing starts
+   * Auto-focus textarea when editing starts and set initial height
    */
   useEffect(() => {
     if (editingTextId && textAreaRef.current) {
       textAreaRef.current.focus();
       textAreaRef.current.select();
+      // Set initial height to fit content
+      textAreaRef.current.style.height = 'auto';
+      textAreaRef.current.style.height = `${textAreaRef.current.scrollHeight}px`;
     }
   }, [editingTextId]);
 
   /**
-   * Get screen position for text editing overlay
+   * Get screen position and size for text editing overlay
+   * Converts canvas coordinates to screen coordinates
    */
   const getTextEditPosition = useCallback(() => {
     if (!editingTextId) return null;
@@ -97,11 +102,19 @@ export function useTextEditing({
     const textShape = shapes.find(s => s.id === editingTextId);
     if (!textShape || textShape.type !== 'text') return null;
     
-    // Convert canvas coordinates to screen coordinates relative to container
-    const x = textShape.x * stageScale + stagePosition.x;
-    const y = textShape.y * stageScale + stagePosition.y;
+    // Convert canvas coordinates to screen coordinates
+    const screenX = textShape.x * stageScale + stagePosition.x;
+    const screenY = textShape.y * stageScale + stagePosition.y;
     
-    return { x, y, shape: textShape };
+    // Scale the width to match the canvas rendering (default to 200 if not set)
+    const screenWidth = (textShape.width || 200) * stageScale;
+    
+    return { 
+      x: screenX, 
+      y: screenY, 
+      width: screenWidth,
+      shape: textShape 
+    };
   }, [editingTextId, shapes, stageScale, stagePosition]);
 
   return {

@@ -75,6 +75,46 @@ function TextPropertiesComponent({
         </div>
       </div>
 
+      {/* Auto Width Button */}
+      <div>
+        <button
+          onClick={() => {
+            // Create a temporary canvas to measure text width
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            // Set font properties to match the text shape
+            const fontStyle = shape.fontStyle || 'normal';
+            const isBold = fontStyle.includes('bold');
+            const isItalic = fontStyle.includes('italic');
+            let font = '';
+            if (isItalic) font += 'italic ';
+            if (isBold) font += 'bold ';
+            font += `${shape.fontSize}px ${shape.fontFamily}`;
+            ctx.font = font;
+
+            // Measure the text width
+            const metrics = ctx.measureText(shape.text || 'Text');
+            const textWidth = Math.ceil(metrics.width);
+            
+            // Add a small padding (10px) to make it look better
+            const newWidth = Math.max(50, textWidth + 10);
+            
+            // Update the shape width
+            safeUpdate({ width: newWidth });
+          }}
+          disabled={isLockedByOther}
+          className="w-full px-3 py-2 text-sm bg-white text-gray-700 border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          title="Resize text box to fit content"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+          </svg>
+          Auto Width
+        </button>
+      </div>
+
       {/* Text Formatting */}
       <div>
         <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Formatting</div>

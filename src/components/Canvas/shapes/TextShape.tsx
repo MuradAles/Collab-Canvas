@@ -59,20 +59,31 @@ export const TextShape = forwardRef<Konva.Text, TextShapeProps>(
 
     const displayText = shape.text || 'Text';
 
+    // Ensure all numeric values are valid (not NaN or undefined)
+    const safeX = typeof shape.x === 'number' && !isNaN(shape.x) ? shape.x : 0;
+    const safeY = typeof shape.y === 'number' && !isNaN(shape.y) ? shape.y : 0;
+    const safeFontSize = typeof shape.fontSize === 'number' && !isNaN(shape.fontSize) ? shape.fontSize : 16;
+    const safeWidth = typeof shape.width === 'number' && !isNaN(shape.width) ? shape.width : 200;
+    const safeRotation = typeof shape.rotation === 'number' && !isNaN(shape.rotation) ? shape.rotation : 0;
+
     return (
       <>
         <Text
           ref={ref}
-          x={shape.x}
-          y={shape.y}
+          x={safeX}
+          y={safeY}
           text={displayText}
-          fontSize={shape.fontSize}
+          fontSize={safeFontSize}
           fontFamily={shape.fontFamily}
           fontStyle={shape.fontStyle || 'normal'}
           textDecoration={shape.textDecoration || ''}
           fill={shape.fill}
-          width={shape.width}
-          rotation={shape.rotation || 0}
+          width={safeWidth}
+          rotation={safeRotation}
+          lineHeight={1}
+          align="left"
+          verticalAlign="top"
+          wrap="word"
           draggable={canDrag}
           onClick={onShapeClick}
           onTap={onShapeClick}
@@ -88,16 +99,10 @@ export const TextShape = forwardRef<Konva.Text, TextShapeProps>(
           <Transformer
             ref={transformerRef}
             enabledAnchors={[
-              'top-left',
-              'top-right',
-              'bottom-left',
-              'bottom-right',
               'middle-left',
               'middle-right',
-              'top-center',
-              'bottom-center',
             ]}
-            rotateEnabled={true}
+            rotateEnabled={false}
             borderStroke={SELECTION_STROKE}
             borderStrokeWidth={SELECTION_STROKE_WIDTH}
             anchorSize={8}
@@ -107,6 +112,14 @@ export const TextShape = forwardRef<Konva.Text, TextShapeProps>(
             anchorCornerRadius={2}
             onTransform={onTransform}
             onTransformEnd={onTransformEnd}
+            boundBoxFunc={(oldBox, newBox) => {
+              // Only allow width changes, prevent scaling
+              // Keep the same height, only change width
+              return {
+                ...newBox,
+                height: oldBox.height,
+              };
+            }}
           />
         )}
       </>
