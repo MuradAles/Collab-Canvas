@@ -105,6 +105,7 @@ export function Canvas() {
     handleDrawStart,
     handleDrawMove,
     handleDrawEnd,
+    handleTextClick,
   } = useShapeDrawing({
     stageRef,
     stagePosition,
@@ -130,6 +131,7 @@ export function Canvas() {
     startEditingNewText,
   } = useTextEditing({
     shapes,
+    selectedIds,
     stageScale,
     stagePosition,
     updateShape,
@@ -269,7 +271,7 @@ export function Canvas() {
   );
 
   /**
-   * Handle clicks on stage background to deselect
+   * Handle clicks on stage background to deselect and handle text creation
    * CRITICAL: Don't deselect if we just finished box selecting!
    */
   const handleStageClick = useCallback(
@@ -279,10 +281,21 @@ export function Canvas() {
       const wasSelecting = selectionRect !== null;
       
       if (e.target === e.target.getStage() && !wasSelecting) {
-        selectShape(null);
+        // If currently editing text, end editing
+        if (editingTextId) {
+          handleTextEditEnd();
+        }
+        
+        // Handle text creation (if text tool is active)
+        handleTextClick(e);
+        
+        // Deselect shapes (unless text tool is active - text creation handles selection)
+        if (currentTool !== 'text') {
+          selectShape(null);
+        }
       }
     },
-    [selectShape, selectionRect]
+    [selectShape, selectionRect, editingTextId, handleTextEditEnd, handleTextClick, currentTool]
   );
 
   /**
@@ -598,6 +611,14 @@ export function Canvas() {
               }
             }}
             onBlur={handleTextEditEnd}
+            onClick={(e) => {
+              // Prevent clicks on textarea from propagating to canvas
+              e.stopPropagation();
+            }}
+            onMouseDown={(e) => {
+              // Prevent mouse down events from propagating to canvas
+              e.stopPropagation();
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault(); // Prevent new line

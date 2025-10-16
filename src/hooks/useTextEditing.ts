@@ -8,6 +8,7 @@ import type { TextShape, Shape } from '../types';
 
 interface UseTextEditingProps {
   shapes: Shape[];
+  selectedIds: string[];
   stageScale: number;
   stagePosition: { x: number; y: number };
   updateShape: (id: string, updates: Partial<Shape>, localOnly?: boolean) => Promise<void>;
@@ -16,6 +17,7 @@ interface UseTextEditingProps {
 
 export function useTextEditing({
   shapes,
+  selectedIds,
   stageScale,
   stagePosition,
   updateShape,
@@ -38,12 +40,18 @@ export function useTextEditing({
    * Start editing a newly created text shape
    */
   const startEditingNewText = useCallback((shapeId: string) => {
-    // If shapeId is special signal, get last shape
+    // If shapeId is special signal, get the selected text shape
+    // (addShape automatically selects newly created shapes)
     let targetId = shapeId;
     if (shapeId === '_last_created_') {
-      const lastShape = shapes[shapes.length - 1];
-      if (lastShape && lastShape.type === 'text') {
-        targetId = lastShape.id;
+      // Get the first selected shape (should be the newly created text)
+      if (selectedIds.length > 0) {
+        const selectedShape = shapes.find(s => s.id === selectedIds[0]);
+        if (selectedShape && selectedShape.type === 'text') {
+          targetId = selectedShape.id;
+        } else {
+          return;
+        }
       } else {
         return;
       }
@@ -52,14 +60,14 @@ export function useTextEditing({
     const textShape = shapes.find(s => s.id === targetId);
     if (textShape && textShape.type === 'text') {
       setEditingTextId(targetId);
-      setTextAreaValue('Text');
+      setTextAreaValue(textShape.text);
       // Focus the textarea and select all text for easy replacement
       requestAnimationFrame(() => {
         textAreaRef.current?.focus();
         textAreaRef.current?.select();
       });
     }
-  }, [shapes]);
+  }, [shapes, selectedIds]);
 
   /**
    * Finish editing text and save to Firebase
