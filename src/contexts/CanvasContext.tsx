@@ -14,7 +14,7 @@ import {
   useMemo,
   type ReactNode,
 } from 'react';
-import type { Shape, ShapeUpdate, CanvasContextType } from '../types';
+import type { Shape, ShapeUpdate, CanvasContextType, LineShape } from '../types';
 import { generateId } from '../utils/helpers';
 import { useAuth } from './AuthContext';
 import {
@@ -470,6 +470,109 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
     [currentUser]
   );
 
+  /**
+   * Duplicates selected shapes (PR #13)
+   * Creates copies with offset positions and auto-generated names
+   * @param shapeIds - Array of shape IDs to duplicate
+   * @returns Array of new shape IDs
+   */
+  const duplicateShapes = useCallback(
+    async (shapeIds: string[]): Promise<string[]> => {
+      if (!currentUser) {
+        throw new Error('Must be logged in to duplicate shapes');
+      }
+
+      if (shapeIds.length === 0) {
+        return [];
+      }
+
+      const newShapeIds: string[] = [];
+      const OFFSET = 20; // Offset in pixels for duplicate visibility
+
+      try {
+        // Process each shape
+        for (const shapeId of shapeIds) {
+          const originalShape = shapes.find(s => s.id === shapeId);
+          if (!originalShape) continue;
+
+          // Generate new ID
+          const newId = generateId();
+
+          // Generate duplicate name with "Copy" suffix
+          // If name already ends with "Copy N", increment N
+          let newName: string;
+          const copyMatch = originalShape.name.match(/^(.+?)(?: Copy (\d+))?$/);
+          if (copyMatch) {
+            const baseName = copyMatch[1];
+            const copyNumber = copyMatch[2] ? parseInt(copyMatch[2], 10) + 1 : 2;
+            
+            // Check if it's a default numbered name (e.g., "Rectangle 1")
+            // If so, use "Rectangle 1 Copy" instead of "Rectangle Copy"
+            if (baseName.match(/^(Rectangle|Circle|Text|Line) \d+$/)) {
+              newName = copyNumber === 2 ? `${baseName} Copy` : `${baseName} Copy ${copyNumber}`;
+            } else {
+              // For user-renamed shapes, just add Copy suffix
+              newName = copyNumber === 2 ? `${baseName} Copy` : `${baseName} Copy ${copyNumber}`;
+            }
+          } else {
+            newName = `${originalShape.name} Copy`;
+          }
+
+          // Calculate max zIndex for new shapes to appear on top
+          const maxZIndex = shapes.length > 0 
+            ? Math.max(...shapes.map(s => s.zIndex)) 
+            : -1;
+
+          // Create duplicate shape with offset position
+          let duplicateShape: Shape;
+          
+          if (originalShape.type === 'line') {
+            // Lines use x1, y1, x2, y2 coordinates
+            duplicateShape = {
+              ...originalShape,
+              id: newId,
+              name: newName,
+              x1: originalShape.x1 + OFFSET,
+              y1: originalShape.y1 + OFFSET,
+              x2: originalShape.x2 + OFFSET,
+              y2: originalShape.y2 + OFFSET,
+              zIndex: maxZIndex + newShapeIds.length + 1,
+              isLocked: false,
+              lockedBy: null,
+              lockedByName: null,
+            } as LineShape;
+          } else {
+            // Rectangle, Circle, Text use x, y coordinates
+            duplicateShape = {
+              ...originalShape,
+              id: newId,
+              name: newName,
+              x: originalShape.x + OFFSET,
+              y: originalShape.y + OFFSET,
+              zIndex: maxZIndex + newShapeIds.length + 1,
+              isLocked: false,
+              lockedBy: null,
+              lockedByName: null,
+            } as Shape;
+          }
+
+          // Add to Firestore
+          await createShapeInFirestore(duplicateShape);
+          newShapeIds.push(newId);
+        }
+
+        // Select the newly duplicated shapes
+        setSelectedIds(newShapeIds);
+
+        return newShapeIds;
+      } catch (error) {
+        console.error('Failed to duplicate shapes:', error);
+        throw error;
+      }
+    },
+    [currentUser, shapes]
+  );
+
   // Merge real-time drag positions and local updates with persistent shapes
   // Memoized to prevent unnecessary re-renders - only recompute when dependencies change
   // CRITICAL: Only create new objects for shapes that actually changed to maintain referential equality
@@ -567,6 +670,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       lockShape,
       unlockShape,
       reorderShapes,
+      duplicateShapes,
     }),
     [
       shapesWithDragPositions,
@@ -579,6 +683,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       lockShape,
       unlockShape,
       reorderShapes,
+      duplicateShapes,
     ]
   );
 

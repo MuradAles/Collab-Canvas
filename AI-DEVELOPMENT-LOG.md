@@ -237,4 +237,170 @@ After core features worked, you spent significant time **making the UI beautiful
 
 ---
 
+## Post-MVP Enhancement: Line Shape Multi-Select Fix
+
+### Phase 8: Line Dragging & Real-Time Synchronization Issues
+
+**Date**: October 2025  
+**Context**: After adding line shapes to the canvas, discovered critical issues with dragging and multi-select functionality.
+
+---
+
+#### The Problems You Encountered
+
+**Problem 1**: When dragging a single line, you saw the line moving but other users saw nothing - or the line stayed in place.
+
+**Problem 2**: When selecting 3 lines and dragging one, only the dragged line stayed in correct position - the other 2 lines moved but ended up in the wrong location.
+
+**Problem 3**: When dragging a rectangle with 3 lines selected together, your screen showed correct positions but other users saw the shapes scattered in different locations.
+
+**Your prompts**:
+- *"We didn't improve lines. Still, I don't see live updates while moving lines."*
+- *"When I'm selecting three lines, I want them to move and calculate properly."*
+- *"Oh okay, let's say we have six lines and I'm currently moving line number one. For some reason, this line is staying while other lines are moving."*
+- *"There's a picture showing I move everything on the right side and when we get what users see on left side, which is in the wrong position."*
+
+---
+
+#### Root Causes Discovered
+
+**Issue 1 - Line Rendering Architecture**:
+- Lines in Konva use an invisible hit-detection Line + visible display Line
+- Only the invisible Line was draggable
+- When dragged, only IT got Konva's offset - visible line stayed in place
+- Result: Line appeared frozen on your screen
+
+**Issue 2 - Dual Update Path Conflict**:
+- Lines were calling BOTH `onDragMove` and `onTransform` during drag
+- Two different functions calculated positions
+- They fought each other, causing erratic movement
+- Result: Lagging, jumping, wrong directions
+
+**Issue 3 - Double-Movement Calculation**:
+- During drag: Updated local state for all selected shapes
+- At drag end: Calculated `currentPosition + delta`
+- But `currentPosition` already included local updates!
+- Formula: `shape.x1 + deltaX` (WRONG - applies delta twice)
+- Should be: `initialPosition.x1 + deltaX` (CORRECT - single calculation)
+- Result: Lines ended up in wrong absolute positions
+
+**Issue 4 - Missing RTDB Updates**:
+- Only sent RTDB for the dragged shape
+- Other selected shapes only got local state updates
+- Other users didn't see the full selection moving
+- Result: No live updates for other users
+
+---
+
+#### How We Fixed It (Iteration by Iteration)
+
+**Attempt 1**: Remove `onTransform` call during line drag
+- **Your feedback**: "Much better, but the line I'm dragging is lagging"
+- **Lesson**: Removed duplicate update paths, but introduced new issue
+
+**Attempt 2**: Reset Konva position during drag move
+- **Your feedback**: "The line is going in wrong direction"
+- **Lesson**: Resetting position mid-drag confused Konva's internal calculations
+
+**Attempt 3**: Make Group draggable instead of Line
+- **Success**: Both visible and invisible lines now move together!
+- **Key insight**: Let Konva handle visual dragging naturally with offset
+
+**Attempt 4**: Fix drag end calculations
+- Changed from `shape.x1 + deltaX` to `initialPosition.x1 + deltaX`
+- **Your feedback**: "Okay, perfect now!"
+- **Key insight**: Always calculate from initial stored positions
+
+**Attempt 5**: Add RTDB for all selected shapes
+- **Your feedback**: "The last thing, I don't see live updates on other users' screen"
+- **Solution**: Send RTDB for ALL selected shapes during drag
+- **Final result**: "Okay, perfect now!"
+
+---
+
+#### Technical Solutions Implemented
+
+1. **Group Dragging**:
+   ```typescript
+   <Group draggable={canDrag && isSelected}>
+     <Line stroke="transparent" /> {/* Hit detection */}
+     <Line stroke={color} />        {/* Visual display */}
+   </Group>
+   ```
+
+2. **Single Calculation Path**:
+   - Lines only use `onDragMove` for dragging
+   - `onTransform` reserved for anchor point resizing
+   - No conflicting update paths
+
+3. **Initial Position Storage**:
+   ```typescript
+   // Store at drag start
+   initialPositionsRef.current.set(id, {
+     x: centerX, y: centerY,
+     x1: shape.x1, y1: shape.y1, x2: shape.x2, y2: shape.y2
+   });
+   
+   // Calculate at drag end
+   x1: initialPosition.x1 + deltaX  // Not: shape.x1 + deltaX
+   ```
+
+4. **Multi-User Real-Time Updates**:
+   - Send RTDB for ALL selected shapes
+   - Update local state for non-dragged shapes only
+   - Other users see full selection moving at ~60fps
+
+---
+
+#### Your Development Approach This Session
+
+**Pattern observed**:
+1. **Show, don't just tell**: You sent screenshots showing the problem
+2. **Test immediately**: "Okay, much better, but..."
+3. **Iterate quickly**: You provided instant feedback after each attempt
+4. **Be specific**: "This line is staying, other lines are moving"
+5. **Reference visual proof**: "There's a picture showing..."
+6. **Stay focused**: "We just need to do only one time calculation"
+
+**Your debugging style**:
+- Tested with multiple scenarios (1 line, 3 lines, 6 lines, mixed shapes)
+- Compared local screen vs other user's screen
+- Identified exact shapes with issues ("line number one")
+- Described both symptoms (what you see) and expectations (what should happen)
+
+---
+
+#### Key Learnings
+
+**Technical**:
+1. **Konva Groups**: When you need multiple shapes to move together, make the Group draggable, not individual children
+2. **Calculate Once**: Store initial positions at drag start, always add delta to initial, never to current
+3. **Separate Concerns**: Line dragging ≠ Line resizing - different callbacks for different operations
+4. **Real-Time UX**: Send RTDB for all affected shapes, not just the active one
+
+**Process**:
+1. **Visual debugging works**: Screenshots revealed issues words couldn't describe
+2. **Iteration speed matters**: Quick feedback cycles (5-6 iterations) reached solution faster than perfect first attempt
+3. **Test with scale**: Testing with 1 line vs 6 lines vs mixed shapes caught different issues
+4. **Multi-user testing critical**: Single-user testing would have missed synchronization bugs
+
+---
+
+#### Time Investment
+- **Problem identification**: ~5 minutes (with screenshots)
+- **Iteration cycles**: ~25 minutes (5-6 attempts with immediate testing)
+- **Final validation**: ~5 minutes (testing all scenarios)
+- **Total**: ~35 minutes from problem to production-ready solution
+
+---
+
+#### Files Modified (13 total)
+- `src/hooks/useShapeInteraction.ts` - Fixed multi-select calculations and RTDB updates
+- `src/components/Canvas/Shape.tsx` - Made Group draggable, fixed React Hook errors
+- `src/contexts/CanvasContext.tsx` - Ignored own RTDB updates for smooth dragging
+
+Plus 10 files from previous line shape implementation.
+
+---
+
 

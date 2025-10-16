@@ -189,6 +189,7 @@ export interface CanvasContextType {
   lockShape: (id: string, userId: string, userName: string) => Promise<void>;
   unlockShape: (id: string) => Promise<void>;
   reorderShapes: (newOrder: Shape[]) => void;
+  duplicateShapes: (shapeIds: string[]) => Promise<string[]>;
 }
 
 // ============================================================================
