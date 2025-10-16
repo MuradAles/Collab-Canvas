@@ -70,7 +70,7 @@ export function Canvas() {
   const lastCursorUpdateRef = useRef<number>(0);
   const pendingCursorUpdateRef = useRef<{ x: number; y: number } | null>(null);
 
-  const { shapes, selectedIds, selectShape, addShape, updateShape, deleteShape, reorderShapes, loading } = useCanvasContext();
+  const { shapes, selectedIds, selectShape, addShape, updateShape, deleteShape, reorderShapes, duplicateShapes, loading } = useCanvasContext();
   const { currentUser } = useAuth();
 
   const selectedShapes = shapes.filter(s => selectedIds.includes(s.id));
@@ -322,6 +322,17 @@ export function Canvas() {
         }
       }
       
+      // Duplicate selected shapes (Ctrl+Shift+D / Cmd+Shift+D)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'D') {
+        if (selectedIds.length > 0 && !e.repeat) {
+          e.preventDefault();
+          // Duplicate all selected shapes
+          duplicateShapes(selectedIds).catch(error => {
+            console.error('Failed to duplicate shapes:', error);
+          });
+        }
+      }
+      
       // Escape to deselect all
       if (e.key === 'Escape') {
         selectShape(null);
@@ -330,7 +341,7 @@ export function Canvas() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIds, deleteShape, selectShape]);
+  }, [selectedIds, deleteShape, selectShape, duplicateShapes]);
 
   const getCursorStyle = useCallback(() => {
     if (isPanning) return 'grabbing';
@@ -564,10 +575,14 @@ export function Canvas() {
               Selected: {selectedIds.length}
             </div>
           )}
-          <div className="mt-2 pt-2 border-t border-gray-200 text-gray-500">
+          <div className="mt-2 pt-2 border-t border-gray-200 text-gray-500 space-y-1">
             <div className="flex items-center gap-1">
               <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs">Shift</kbd>
               <span>+ Click to Multi-Select</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs">Ctrl+Shift+D</kbd>
+              <span>to Duplicate</span>
             </div>
           </div>
         </div>
