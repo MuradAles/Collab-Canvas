@@ -479,8 +479,16 @@ export function useShapeInteraction({
             pending.y2
           ).catch(console.error);
           
-          // Don't update local state during drag - Konva handles visual dragging
-          // Only RTDB updates are needed for other users to see the changes
+          // For line anchor dragging, update local state for immediate visual feedback
+          if (pending.x1 !== undefined && pending.y1 !== undefined && 
+              pending.x2 !== undefined && pending.y2 !== undefined) {
+            updateShape(pending.shapeId, {
+              x1: pending.x1,
+              y1: pending.y1,
+              x2: pending.x2,
+              y2: pending.y2,
+            } as Partial<Shape>, true).catch(console.error); // localOnly: true for instant feedback
+          }
           
           // ALSO update cursor position during transformation
           updateCurrentCursorPosition();
@@ -490,7 +498,7 @@ export function useShapeInteraction({
         dragRafRef.current = null;
       });
     },
-    [currentUserId, currentUserName, updateCurrentCursorPosition]
+    [currentUserId, currentUserName, updateCurrentCursorPosition, updateShape]
   );
 
   /**
