@@ -106,38 +106,13 @@ export function useShapeDrawing({
             y2: canvasPos.y,
           });
         } else if (selectedTool === 'text') {
-          // Create text immediately at click position with default "Text" content
-          const textShape: Omit<TextShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'> = {
-            type: 'text',
-            x: canvasPos.x,
-            y: canvasPos.y,
-            rotation: 0,
-            zIndex: 0,
-            text: 'Text',
-            fontSize: DEFAULT_TEXT_SIZE,
-            fontFamily: DEFAULT_TEXT_FONT,
-            fill: DEFAULT_TEXT_FILL,
-            fontStyle: 'normal',
-            textDecoration: '',
-            width: 200, // Default width for new text shapes
-          };
-          
-          // Add shape and notify parent to enable editing
-          addShape(textShape).then(() => {
-            // Notify parent that text was created (so it can start editing)
-            if (onTextCreated) {
-              // Small delay to ensure shape is added to context
-              setTimeout(() => {
-                onTextCreated('_last_created_'); // Signal to get last shape
-              }, 50);
-            }
-          });
-          
-          setSelectedTool('select'); // Switch back to select tool
+          // DO NOT create text on mouse down - wait for canvas click
+          // This prevents accidentally creating text on existing shapes
+          return;
         }
       }
     },
-    [stageRef, stagePosition, stageScale, selectedTool, addShape, setSelectedTool, onTextCreated]
+    [stageRef, stagePosition, stageScale, selectedTool]
   );
 
   /**
@@ -262,6 +237,64 @@ export function useShapeDrawing({
     setNewLinePreview(null);
   }, [isDrawing, newShapePreview, newLinePreview, addShape, selectedTool]);
 
+  /**
+   * Handle text creation on canvas click
+   * Separated from handleDrawStart to avoid conflicts with existing text shapes
+   */
+  const handleTextClick = useCallback(
+    async (e: Konva.KonvaEventObject<MouseEvent>) => {
+      // Only create text if text tool is selected and clicking on stage background
+      if (selectedTool !== 'text' || e.target !== e.target.getStage()) {
+        return;
+      }
+
+      const stage = stageRef.current;
+      if (!stage) return;
+
+      const pointer = stage.getPointerPosition();
+      if (!pointer) return;
+
+      // Convert screen coordinates to canvas coordinates
+      const canvasPos = screenToCanvas(
+        pointer.x,
+        pointer.y,
+        stagePosition.x,
+        stagePosition.y,
+        stageScale
+      );
+
+      // Create text immediately at click position with default "Text" content
+      const textShape: Omit<TextShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'> = {
+        type: 'text',
+        x: canvasPos.x,
+        y: canvasPos.y,
+        rotation: 0,
+        zIndex: 0,
+        text: 'Text',
+        fontSize: DEFAULT_TEXT_SIZE,
+        fontFamily: DEFAULT_TEXT_FONT,
+        fill: DEFAULT_TEXT_FILL,
+        fontStyle: 'normal',
+        textDecoration: '',
+        width: 200, // Default width for new text shapes
+      };
+      
+      // Add shape and notify parent to enable editing
+      await addShape(textShape).then(() => {
+        // Notify parent that text was created (so it can start editing)
+        if (onTextCreated) {
+          // Small delay to ensure shape is added to context
+          setTimeout(() => {
+            onTextCreated('_last_created_'); // Signal to get last shape
+          }, 50);
+        }
+      });
+      
+      setSelectedTool('select'); // Switch back to select tool
+    },
+    [stageRef, stagePosition, stageScale, selectedTool, addShape, setSelectedTool, onTextCreated]
+  );
+
   return {
     isDrawing,
     newShapePreview,
@@ -269,6 +302,7 @@ export function useShapeDrawing({
     handleDrawStart,
     handleDrawMove,
     handleDrawEnd,
+    handleTextClick,
   };
 }
 

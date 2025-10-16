@@ -14,7 +14,7 @@ import {
   useMemo,
   type ReactNode,
 } from 'react';
-import type { Shape, ShapeUpdate, CanvasContextType, LineShape } from '../types';
+import type { Shape, ShapeUpdate, CanvasContextType, LineShape, Tool, SelectionRect } from '../types';
 import { generateId } from '../utils/helpers';
 import { useAuth } from './AuthContext';
 import {
@@ -26,6 +26,8 @@ import {
   reorderShapes as reorderShapesInFirestore,
   lockShape as lockShapeInFirestore,
   unlockShape as unlockShapeInFirestore,
+  lockShapesBatch,
+  unlockShapesBatch,
   cleanupUserLocks,
 } from '../services/canvas';
 import {
@@ -45,6 +47,8 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
   const [loading, setLoading] = useState(true);
   const [dragPositions, setDragPositions] = useState<Map<string, DragPosition>>(new Map());
   const [localUpdates, setLocalUpdates] = useState<Map<string, Partial<Shape>>>(new Map());
+  const [currentTool, setCurrentTool] = useState<Tool>('select');
+  const [selectionRect, setSelectionRect] = useState<SelectionRect | null>(null);
   const { currentUser } = useAuth();
   
   // RAF throttling for incoming drag updates to prevent FPS drops
@@ -283,6 +287,18 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
   );
 
   /**
+   * Clears local updates for specific shape IDs
+   * Used after batch operations to prevent stale local state
+   */
+  const clearLocalUpdates = useCallback((shapeIds: string[]) => {
+    setLocalUpdates((prev) => {
+      const newMap = new Map(prev);
+      shapeIds.forEach(id => newMap.delete(id));
+      return newMap;
+    });
+  }, []);
+
+  /**
    * Deletes a shape from the canvas
    * Cannot delete shapes locked by other users
    */
@@ -298,9 +314,9 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
         setSelectedIds((prev) => prev.filter(shapeId => shapeId !== id));
       } catch (error) {
         console.error('Failed to delete shape:', error);
-        // Show user-friendly error message
+        // Log error but don't interrupt user flow
         if (error instanceof Error) {
-          alert(error.message);
+          console.warn('Delete operation failed:', error.message);
         }
       }
     },
@@ -325,9 +341,9 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
         await lockShapeInFirestore(id, userId, userName);
       } catch (error) {
         console.error('Failed to lock shape:', error);
-        // Show user-friendly error message
+        // Log warning but don't interrupt user flow
         if (error instanceof Error) {
-          alert(error.message);
+          console.warn('Lock operation failed:', error.message);
         }
         throw error;
       }
@@ -375,16 +391,10 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       // Update state immediately
       setSelectedIds([]);
       
-      // Unlock all shapes in background
-      const unlockPromises = shapesToUnlock.map(async shapeId => {
-        try {
-          await unlockShape(shapeId);
-        } catch (error) {
-          console.error('Failed to unlock shape:', shapeId, error);
-        }
-      });
-      
-      Promise.all(unlockPromises).catch(console.error);
+      // ⚡ BATCH UNLOCK - all shapes unlock simultaneously for all users!
+      if (shapesToUnlock.length > 0) {
+        unlockShapesBatch(shapesToUnlock, currentUser.uid).catch(console.error);
+      }
       return;
     }
 
@@ -402,10 +412,8 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       if (isAlreadySelected) {
         // Deselect this shape (remove from selection)
         setSelectedIds(prev => prev.filter(shapeId => shapeId !== id));
-        // Then unlock in background
-        unlockShape(id).catch(error => {
-          console.error('Failed to unlock shape:', id, error);
-        });
+        // Then unlock in background (single shape, no need for batch)
+        unlockShape(id).catch(console.error);
       } else {
         // Add to selection - optimistic update
         setSelectedIds(prev => [...prev, id]);
@@ -436,19 +444,66 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
           });
       }
       
-      // Unlock ALL previous shapes that are not the new selection
+      // ⚡ BATCH UNLOCK - all previous shapes unlock simultaneously for all users!
       const shapesToUnlock = previousSelection.filter(shapeId => shapeId !== id);
       if (shapesToUnlock.length > 0) {
-        shapesToUnlock.forEach(async shapeId => {
-          try {
-            await unlockShape(shapeId);
-          } catch (error) {
-            console.error('Failed to unlock shape:', shapeId, error);
-          }
-        });
+        unlockShapesBatch(shapesToUnlock, currentUser.uid).catch(console.error);
       }
     }
   }, [currentUser, shapes, lockShape, unlockShape]);
+
+  /**
+   * Select multiple shapes atomically (batch selection)
+   * Updates ALL shapes at once to prevent race conditions
+   * @param ids - Array of shape IDs to select
+   * @param addToSelection - If true, adds to current selection; if false, replaces selection
+   */
+  const selectMultipleShapes = useCallback(async (ids: string[], addToSelection = false) => {
+    if (!currentUser || ids.length === 0) return;
+
+    // CRITICAL: Read from ref to get LATEST selectedIds
+    const currentSelectedIds = selectedIdsRef.current;
+
+    // Filter out shapes locked by other users
+    const selectableIds = ids.filter(id => {
+      const shape = shapes.find(s => s.id === id);
+      return !shape?.isLocked || !shape.lockedBy || shape.lockedBy === currentUser.uid;
+    });
+
+    if (selectableIds.length === 0) return;
+
+    // Calculate what needs to be locked/unlocked
+    let newSelection: string[];
+    let shapesToLock: string[];
+    let shapesToUnlock: string[];
+
+    if (addToSelection) {
+      // Add to existing selection
+      newSelection = [...new Set([...currentSelectedIds, ...selectableIds])];
+      shapesToLock = selectableIds.filter(id => !currentSelectedIds.includes(id));
+      shapesToUnlock = [];
+    } else {
+      // Replace selection
+      newSelection = selectableIds;
+      shapesToLock = selectableIds.filter(id => !currentSelectedIds.includes(id));
+      shapesToUnlock = currentSelectedIds.filter(id => !selectableIds.includes(id));
+    }
+
+    // ⚡ ATOMIC STATE UPDATE - happens synchronously
+    setSelectedIds(newSelection);
+
+    // 🔒 BATCH LOCK/UNLOCK - all shapes update simultaneously for all users!
+    Promise.all([
+      shapesToLock.length > 0
+        ? lockShapesBatch(shapesToLock, currentUser.uid, currentUser.displayName || 'Unknown')
+            .catch(console.error)
+        : Promise.resolve(),
+      shapesToUnlock.length > 0
+        ? unlockShapesBatch(shapesToUnlock, currentUser.uid)
+            .catch(console.error)
+        : Promise.resolve(),
+    ]).catch(console.error);
+  }, [currentUser, shapes]);
 
   /**
    * Reorders shapes (for z-index management)
@@ -663,27 +718,37 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       shapes: shapesWithDragPositions,
       selectedIds,
       loading,
+      currentTool,
+      selectionRect,
       addShape,
       updateShape,
       deleteShape,
       selectShape,
+      selectMultipleShapes,
       lockShape,
       unlockShape,
       reorderShapes,
       duplicateShapes,
+      setCurrentTool,
+      setSelectionRect,
+      clearLocalUpdates,
     }),
     [
       shapesWithDragPositions,
       selectedIds,
       loading,
+      currentTool,
+      selectionRect,
       addShape,
       updateShape,
       deleteShape,
       selectShape,
+      selectMultipleShapes,
       lockShape,
       unlockShape,
       reorderShapes,
       duplicateShapes,
+      clearLocalUpdates,
     ]
   );
 

@@ -20,6 +20,7 @@ interface UseShapeInteractionProps {
   updateShape: (id: string, updates: Partial<Shape>, localOnly?: boolean) => Promise<void>;
   selectedIds: string[];
   shapes: Shape[];
+  clearLocalUpdates: (shapeIds: string[]) => void;
 }
 
 export function useShapeInteraction({
@@ -31,6 +32,7 @@ export function useShapeInteraction({
   updateShape,
   selectedIds,
   shapes,
+  clearLocalUpdates,
 }: UseShapeInteractionProps) {
   
   // RAF throttling for drag updates to prevent FPS drops
@@ -395,6 +397,10 @@ export function useShapeInteraction({
             if (batchUpdates.length > 0) {
               await updateShapesBatch(batchUpdates);
             }
+            
+            // CRITICAL FIX: Clear local updates for all selected shapes
+            // This prevents stale local state from causing teleportation on next click
+            clearLocalUpdates(selectedIds);
             
             // Clear RTDB positions for all shapes
             await Promise.all(
