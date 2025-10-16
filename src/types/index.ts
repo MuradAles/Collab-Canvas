@@ -188,6 +188,7 @@ export interface CanvasContextType {
   addShape: (shape: Omit<Shape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>) => Promise<void>;
   updateShape: (id: string, updates: ShapeUpdate, localOnly?: boolean) => Promise<void>;
   deleteShape: (id: string) => Promise<void>;
+  deleteShapes: (shapeIds: string[]) => Promise<void>;
   selectShape: (id: string | null, addToSelection?: boolean) => void;
   selectMultipleShapes: (ids: string[], addToSelection?: boolean) => Promise<void>;
   lockShape: (id: string, userId: string, userName: string) => Promise<void>;
@@ -226,29 +227,5 @@ export interface ViewportState {
   scale: number;
   x: number;
   y: number;
-}
-
-// ============================================================================
-// AI Types
-// ============================================================================
-
-export interface AIMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: number;
-}
-
-export interface AICommandResult {
-  success: boolean;
-  message: string;
-  shapeIds?: string[];
-}
-
-export interface AIActivity {
-  userId: string;
-  userName: string;
-  command: string;
-  timestamp: number;
 }
 

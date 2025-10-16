@@ -23,6 +23,7 @@ import {
   createShape as createShapeInFirestore,
   updateShape as updateShapeInFirestore,
   deleteShape as deleteShapeInFirestore,
+  deleteShapesBatch as deleteShapesBatchInFirestore,
   reorderShapes as reorderShapesInFirestore,
   lockShape as lockShapeInFirestore,
   unlockShape as unlockShapeInFirestore,
@@ -317,6 +318,38 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
         // Log error but don't interrupt user flow
         if (error instanceof Error) {
           console.warn('Delete operation failed:', error.message);
+        }
+      }
+    },
+    [currentUser]
+  );
+
+  /**
+   * Deletes multiple shapes at once (batch operation)
+   * ⚡ ALL SHAPES DELETE SIMULTANEOUSLY - single Firestore transaction
+   * Cannot delete shapes locked by other users
+   */
+  const deleteShapes = useCallback(
+    async (shapeIds: string[]) => {
+      if (!currentUser) {
+        throw new Error('Must be logged in to delete shapes');
+      }
+
+      if (shapeIds.length === 0) {
+        return;
+      }
+
+      try {
+        // ⚡ BATCH DELETE - all shapes delete at once!
+        await deleteShapesBatchInFirestore(shapeIds, currentUser.uid);
+        
+        // Remove all deleted shapes from selection
+        setSelectedIds((prev) => prev.filter(id => !shapeIds.includes(id)));
+      } catch (error) {
+        console.error('Failed to batch delete shapes:', error);
+        // Log error but don't interrupt user flow
+        if (error instanceof Error) {
+          console.warn('Batch delete operation failed:', error.message);
         }
       }
     },
@@ -723,6 +756,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       addShape,
       updateShape,
       deleteShape,
+      deleteShapes,
       selectShape,
       selectMultipleShapes,
       lockShape,
@@ -742,6 +776,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       addShape,
       updateShape,
       deleteShape,
+      deleteShapes,
       selectShape,
       selectMultipleShapes,
       lockShape,
