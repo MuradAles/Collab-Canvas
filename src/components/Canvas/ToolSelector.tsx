@@ -5,15 +5,17 @@
 
 import type { ReactNode } from 'react';
 import { ShapeDropdown, type ShapeTool } from './ShapeDropdown';
+import type { Tool } from '../../types';
 
-export type Tool = 'select' | 'rectangle' | 'circle' | 'line' | 'text';
+export type { Tool };
 
 interface ToolSelectorProps {
   selectedTool: Tool;
   onToolChange: (tool: Tool) => void;
+  onAIClick?: () => void;
 }
 
-export function ToolSelector({ selectedTool, onToolChange }: ToolSelectorProps) {
+export function ToolSelector({ selectedTool, onToolChange, onAIClick }: ToolSelectorProps) {
   const isShapeTool = selectedTool === 'rectangle' || selectedTool === 'circle' || selectedTool === 'line';
   
   const tools: { id: 'select' | 'text'; label: string; icon: ReactNode; shortcut: string }[] = [
@@ -94,6 +96,33 @@ export function ToolSelector({ selectedTool, onToolChange }: ToolSelectorProps) 
             <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
               Text
               <kbd className="ml-2 px-1 bg-gray-700 rounded text-xs">T</kbd>
+            </div>
+          </div>
+        </button>
+
+        {/* Divider */}
+        <div className="w-px h-8 bg-gray-300 mx-1" />
+
+        {/* AI Tool */}
+        <button
+          onClick={() => {
+            if (onAIClick) onAIClick();
+          }}
+          className="relative group px-3 py-2 rounded-md transition-all duration-200 flex items-center justify-center hover:bg-purple-50 text-purple-600 hover:text-purple-700"
+          title="AI Assistant"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
+            />
+          </svg>
+          <div className="absolute top-full mt-2 hidden group-hover:block z-50">
+            <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+              AI Assistant
+              <span className="ml-2 text-purple-300">✨</span>
             </div>
           </div>
         </button>

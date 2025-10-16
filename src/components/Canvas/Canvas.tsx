@@ -15,22 +15,23 @@ import {
   DEFAULT_SHAPE_FILL,
   DEFAULT_SHAPE_STROKE,
 } from '../../utils/constants';
-import { updateCursorPosition } from '../../services/presence';
-import { screenToCanvas } from '../../utils/helpers';
+import { updateCursorPosition, subscribeToAIActivity, type AIActivityData } from '../../services/presence';
+import { screenToCanvas, normalizeRectangle, rectanglesIntersect, circleIntersectsRect, lineIntersectsRect } from '../../utils/helpers';
 import { renderGrid } from '../../utils/gridRenderer';
 import { CanvasControls } from './CanvasControls';
 import { GridToggle } from './GridToggle';
-import { ToolSelector, type Tool } from './ToolSelector';
+import { ToolSelector } from './ToolSelector';
 import { Shape } from './Shape';
 import { PropertiesPanel } from './PropertiesPanel';
 import { LayersPanel } from './LayersPanel';
 import { CursorsLayer } from './CursorsLayer';
 import { FPSCounter } from './FPSCounter';
+import { AIAgent } from '../AI/AIAgent';
 import { useCanvasPanZoom } from '../../hooks/useCanvasPanZoom';
 import { useShapeDrawing } from '../../hooks/useShapeDrawing';
 import { useTextEditing } from '../../hooks/useTextEditing';
 import { useShapeInteraction } from '../../hooks/useShapeInteraction';
-import type { TextShape, ShapeUpdate } from '../../types';
+import type { TextShape, ShapeUpdate, SelectionRect as SelectionRectType } from '../../types';
 
 // ============================================================================
 // Performance Configuration
@@ -61,7 +62,13 @@ export function Canvas() {
   });
   
   const [showGrid, setShowGrid] = useState(true);
-  const [selectedTool, setSelectedTool] = useState<Tool>('select');
+  const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
+  const [aiNotification, setAiNotification] = useState<AIActivityData | null>(null);
+  
+  // Box selection state
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
+  const [selectionRect, setSelectionRect] = useState<SelectionRectType | null>(null);
   
   // Throttling for cursor position updates
   // Supports both RAF (requestAnimationFrame) and time-based throttling
@@ -70,7 +77,7 @@ export function Canvas() {
   const lastCursorUpdateRef = useRef<number>(0);
   const pendingCursorUpdateRef = useRef<{ x: number; y: number } | null>(null);
 
-  const { shapes, selectedIds, selectShape, addShape, updateShape, deleteShape, reorderShapes, duplicateShapes, loading } = useCanvasContext();
+  const { shapes, selectedIds, selectShape, selectMultipleShapes, addShape, updateShape, deleteShape, reorderShapes, duplicateShapes, loading, currentTool, setCurrentTool, clearLocalUpdates } = useCanvasContext();
   const { currentUser } = useAuth();
 
   const selectedShapes = shapes.filter(s => selectedIds.includes(s.id));
@@ -102,8 +109,8 @@ export function Canvas() {
     stageRef,
     stagePosition,
     stageScale,
-    selectedTool,
-    setSelectedTool,
+    selectedTool: currentTool,
+    setSelectedTool: setCurrentTool,
     addShape,
     onTextCreated: (shapeId) => {
       // Start editing the newly created text shape
@@ -145,6 +152,7 @@ export function Canvas() {
     updateShape,
     selectedIds,
     shapes,
+    clearLocalUpdates,
   });
 
   /**
@@ -245,7 +253,7 @@ export function Canvas() {
         // Otherwise, schedule an update if not already scheduled
         else if (cursorTimeoutRef.current === null) {
           const remainingTime = CURSOR_THROTTLE_MS - timeSinceLastUpdate;
-          cursorTimeoutRef.current = setTimeout(() => {
+          cursorTimeoutRef.current = window.setTimeout(() => {
             const pending = pendingCursorUpdateRef.current;
             if (pending && currentUser) {
               updateCursorPosition(currentUser.uid, pending.x, pending.y);
@@ -262,15 +270,155 @@ export function Canvas() {
 
   /**
    * Handle clicks on stage background to deselect
+   * CRITICAL: Don't deselect if we just finished box selecting!
    */
   const handleStageClick = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
-      if (e.target === e.target.getStage()) {
+      // Don't clear selection if we just finished a box selection
+      // (isSelecting would have been true during the mouseup)
+      const wasSelecting = selectionRect !== null;
+      
+      if (e.target === e.target.getStage() && !wasSelecting) {
         selectShape(null);
       }
     },
-    [selectShape]
+    [selectShape, selectionRect]
   );
+
+  /**
+   * Handle box selection start
+   */
+  const handleSelectionStart = useCallback(
+    (e: Konva.KonvaEventObject<MouseEvent>) => {
+      // Only start box selection if:
+      // 1. Select tool is active
+      // 2. Not panning (Ctrl/Cmd not pressed)
+      // 3. Clicking on stage background (not a shape)
+      if (currentTool !== 'select' || e.evt.ctrlKey || e.evt.metaKey || e.target !== e.target.getStage()) {
+        return;
+      }
+
+      const stage = stageRef.current;
+      if (!stage) return;
+
+      const pointer = stage.getPointerPosition();
+      if (!pointer) return;
+
+      // Convert to canvas coordinates
+      const canvasPos = screenToCanvas(
+        pointer.x,
+        pointer.y,
+        stagePosition.x,
+        stagePosition.y,
+        stageScale
+      );
+
+      setIsSelecting(true);
+      setSelectionStart(canvasPos);
+      setSelectionRect(null);
+    },
+    [currentTool, stagePosition, stageScale]
+  );
+
+  /**
+   * Handle box selection move
+   */
+  const handleSelectionMove = useCallback(() => {
+    if (!isSelecting || !selectionStart) return;
+
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+
+    // Convert to canvas coordinates
+    const canvasPos = screenToCanvas(
+      pointer.x,
+      pointer.y,
+      stagePosition.x,
+      stagePosition.y,
+      stageScale
+    );
+
+    // Create normalized rectangle
+    const rect = normalizeRectangle(
+      selectionStart.x,
+      selectionStart.y,
+      canvasPos.x,
+      canvasPos.y
+    );
+
+    setSelectionRect(rect);
+  }, [isSelecting, selectionStart, stagePosition, stageScale]);
+
+  /**
+   * Handle box selection end - find and select intersecting shapes
+   * ⚡ ATOMIC: Selects all shapes at once to prevent race conditions
+   */
+  const handleSelectionEnd = useCallback(async () => {
+    if (!isSelecting || !selectionRect || !currentUser) {
+      setIsSelecting(false);
+      setSelectionStart(null);
+      setSelectionRect(null);
+      return;
+    }
+
+    // Find all shapes that intersect with the selection rectangle
+    const intersectingShapes = shapes.filter((shape) => {
+      // Skip locked shapes by other users (selectMultipleShapes will also filter)
+      if (shape.isLocked && shape.lockedBy && shape.lockedBy !== currentUser.uid) {
+        return false;
+      }
+
+      if (shape.type === 'rectangle' || shape.type === 'text') {
+        // For rectangles and text, check bounding box intersection
+        const shapeRect = {
+          x: shape.x,
+          y: shape.y,
+          width: shape.width || 100,
+          height: shape.type === 'rectangle' ? shape.height : (shape.fontSize || 16),
+        };
+        return rectanglesIntersect(selectionRect, shapeRect);
+      } else if (shape.type === 'circle') {
+        // For circles, check circle-rectangle intersection
+        const circle = {
+          x: shape.x,
+          y: shape.y,
+          radius: shape.radius,
+        };
+        return circleIntersectsRect(circle, selectionRect);
+      } else if (shape.type === 'line') {
+        // For lines, check line-rectangle intersection
+        const line = {
+          x1: shape.x1,
+          y1: shape.y1,
+          x2: shape.x2,
+          y2: shape.y2,
+        };
+        return lineIntersectsRect(line, selectionRect);
+      }
+      return false;
+    });
+
+    // Get IDs of intersecting shapes
+    const intersectingIds = intersectingShapes.map((s) => s.id);
+
+    // Check if Shift is pressed for additive selection
+    const shiftPressed = window.event && (window.event as KeyboardEvent).shiftKey;
+
+    if (intersectingIds.length > 0) {
+      // ⚡ ATOMIC: Select all at once
+      await selectMultipleShapes(intersectingIds, shiftPressed);
+    } else if (!shiftPressed) {
+      selectShape(null);
+    }
+
+    // Clear selection rectangle
+    setIsSelecting(false);
+    setSelectionStart(null);
+    setSelectionRect(null);
+  }, [isSelecting, selectionRect, shapes, currentUser, selectShape, selectMultipleShapes]);
 
   /**
    * Handle property updates from panel (only for single selection)
@@ -295,19 +443,23 @@ export function Canvas() {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Tool shortcuts
       if (e.key === 'v' || e.key === 'V') {
-        setSelectedTool('select');
+        setCurrentTool('select');
         return;
       }
       if (e.key === 'r' || e.key === 'R') {
-        setSelectedTool('rectangle');
+        setCurrentTool('rectangle');
         return;
       }
       if (e.key === 'c' || e.key === 'C') {
-        setSelectedTool('circle');
+        setCurrentTool('circle');
         return;
       }
       if (e.key === 't' || e.key === 'T') {
-        setSelectedTool('text');
+        setCurrentTool('text');
+        return;
+      }
+      if (e.key === 'l' || e.key === 'L') {
+        setCurrentTool('line');
         return;
       }
 
@@ -341,14 +493,15 @@ export function Canvas() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIds, deleteShape, selectShape, duplicateShapes]);
+  }, [selectedIds, deleteShape, selectShape, duplicateShapes, setCurrentTool]);
 
   const getCursorStyle = useCallback(() => {
     if (isPanning) return 'grabbing';
     if (isDrawing) return 'crosshair';
-    if (selectedTool === 'rectangle' || selectedTool === 'circle' || selectedTool === 'text') return 'crosshair';
+    if (isSelecting) return 'crosshair';
+    if (currentTool === 'rectangle' || currentTool === 'circle' || currentTool === 'text' || currentTool === 'line') return 'crosshair';
     return 'default';
-  }, [isPanning, isDrawing, selectedTool]);
+  }, [isPanning, isDrawing, isSelecting, currentTool]);
 
   // Track Ctrl key state for cursor feedback
   useEffect(() => {
@@ -378,6 +531,25 @@ export function Canvas() {
       window.removeEventListener('keyup', handleKeyUp);
     };
   }, [isPanning, getCursorStyle]);
+
+  // Subscribe to AI activity from other users
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const unsubscribe = subscribeToAIActivity(currentUser.uid, (activity) => {
+      // Show notification for other users' AI commands
+      setAiNotification(activity);
+      
+      // Auto-hide after 5 seconds
+      setTimeout(() => {
+        setAiNotification(null);
+      }, 5000);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [currentUser]);
 
   // Show loading state while canvas initializes
   if (loading) {
@@ -478,7 +650,11 @@ export function Canvas() {
         <GridToggle showGrid={showGrid} onToggle={handleToggleGrid} />
 
         {/* Tool Selector */}
-        <ToolSelector selectedTool={selectedTool} onToolChange={setSelectedTool} />
+        <ToolSelector 
+          selectedTool={currentTool} 
+          onToolChange={setCurrentTool}
+          onAIClick={() => setIsAIPanelOpen(!isAIPanelOpen)}
+        />
 
         {/* Canvas Controls */}
         <CanvasControls
@@ -498,15 +674,18 @@ export function Canvas() {
           onMouseDown={(e) => {
             handlePanStart(e);
             handleDrawStart(e);
+            handleSelectionStart(e);
           }}
           onMouseMove={() => {
             handlePanMove();
             handleDrawMove();
+            handleSelectionMove();
             handleCursorTracking();
           }}
           onMouseUp={() => {
             handlePanEnd();
             handleDrawEnd();
+            handleSelectionEnd();
           }}
           onClick={handleStageClick}
           onTap={handleStageClick}
@@ -547,7 +726,7 @@ export function Canvas() {
                   onDragEnd={(x, y) => handleShapeDragEnd(shape.id, x, y)}
                   onTransformEnd={(updates) => handleShapeTransformEnd(shape.id, updates)}
                   onTransform={(x, y, rotation, width, height, radius, fontSize, x1, y1, x2, y2) => handleShapeTransform(shape.id, x, y, rotation, width, height, radius, fontSize, x1, y1, x2, y2)}
-                  isDraggable={selectedTool === 'select'}
+                  isDraggable={currentTool === 'select'}
                   currentUserId={currentUser?.uid}
                   onDoubleClick={shape.type === 'text' ? () => handleTextDoubleClick(shape) : undefined}
                 />
@@ -570,7 +749,7 @@ export function Canvas() {
                   onDragEnd={(x, y) => handleShapeDragEnd(selectedId, x, y)}
                   onTransformEnd={(updates) => handleShapeTransformEnd(selectedId, updates)}
                   onTransform={(x, y, rotation, width, height, radius, fontSize, x1, y1, x2, y2) => handleShapeTransform(selectedId, x, y, rotation, width, height, radius, fontSize, x1, y1, x2, y2)}
-                  isDraggable={selectedTool === 'select'}
+                  isDraggable={currentTool === 'select'}
                   currentUserId={currentUser?.uid}
                   onDoubleClick={shape.type === 'text' ? () => handleTextDoubleClick(shape as TextShape) : undefined}
                 />
@@ -580,7 +759,7 @@ export function Canvas() {
             {/* Shape preview while drawing */}
             {isDrawing && newShapePreview && newShapePreview.width > 0 && newShapePreview.height > 0 && (
               <>
-                {selectedTool === 'rectangle' && (
+                {currentTool === 'rectangle' && (
                   <Rect
                     x={newShapePreview.x}
                     y={newShapePreview.y}
@@ -594,7 +773,7 @@ export function Canvas() {
                     listening={false}
                   />
                 )}
-                {selectedTool === 'circle' && (
+                {currentTool === 'circle' && (
                   <Circle
                     x={newShapePreview.x + newShapePreview.width / 2}
                     y={newShapePreview.y + newShapePreview.height / 2}
@@ -611,7 +790,7 @@ export function Canvas() {
               )}
 
             {/* Line preview while drawing */}
-            {isDrawing && newLinePreview && selectedTool === 'line' && (
+            {isDrawing && newLinePreview && currentTool === 'line' && (
               <Line
                 points={[newLinePreview.x1, newLinePreview.y1, newLinePreview.x2, newLinePreview.y2]}
                 stroke={DEFAULT_SHAPE_STROKE}
@@ -619,6 +798,21 @@ export function Canvas() {
                 lineCap="round"
                 dash={[5, 5]}
                 opacity={0.7}
+                listening={false}
+              />
+            )}
+
+            {/* Selection rectangle while box selecting */}
+            {isSelecting && selectionRect && (
+              <Rect
+                x={selectionRect.x}
+                y={selectionRect.y}
+                width={selectionRect.width}
+                height={selectionRect.height}
+                fill="rgba(59, 130, 246, 0.1)"
+                stroke="#3b82f6"
+                strokeWidth={2 / stageScale}
+                dash={[10 / stageScale, 5 / stageScale]}
                 listening={false}
               />
             )}
@@ -634,7 +828,7 @@ export function Canvas() {
         {/* Canvas info overlay */}
         <div className="absolute bottom-4 left-4 bg-white bg-opacity-90 px-3 py-2 rounded-lg shadow-lg text-xs text-gray-600">
           <div className="font-semibold text-gray-700 mb-1">Canvas Info</div>
-          <div>Tool: {selectedTool}</div>
+          <div>Tool: {currentTool}</div>
           <div>Zoom: {(stageScale * 100).toFixed(0)}%</div>
           <div>Shapes: {shapes.length}</div>
           {selectedIds.length > 0 && (
@@ -662,6 +856,37 @@ export function Canvas() {
         onUpdate={handlePropertyUpdate}
         currentUserId={currentUser?.uid}
       />
+
+      {/* AI Agent Panel */}
+      <AIAgent isOpen={isAIPanelOpen} onClose={() => setIsAIPanelOpen(false)} />
+
+      {/* AI Activity Notification */}
+      {aiNotification && (
+        <div className="fixed top-20 right-4 z-50 bg-purple-600 text-white px-4 py-3 rounded-lg shadow-2xl animate-slide-in-right max-w-sm">
+          <div className="flex items-start gap-3">
+            <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
+              />
+            </svg>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm">{aiNotification.userName} used AI</p>
+              <p className="text-xs text-purple-100 mt-1 line-clamp-2">{aiNotification.command}</p>
+            </div>
+            <button
+              onClick={() => setAiNotification(null)}
+              className="flex-shrink-0 hover:bg-purple-500 p-1 rounded transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

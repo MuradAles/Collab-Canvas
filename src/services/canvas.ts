@@ -217,8 +217,10 @@ export async function deleteShape(
     const shapeRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID, SHAPES_SUBCOLLECTION, shapeId);
     const shapeSnap = await getDoc(shapeRef);
     
+    // If shape doesn't exist, it's already deleted - silently succeed
     if (!shapeSnap.exists()) {
-      throw new Error('Shape not found');
+      console.log(`Shape ${shapeId} already deleted, skipping`);
+      return;
     }
     
     const shapeToDelete = shapeSnap.data() as Shape;
@@ -229,9 +231,9 @@ export async function deleteShape(
       shapeToDelete.lockedBy &&
       shapeToDelete.lockedBy !== currentUserId
     ) {
-      throw new Error(
-        `Cannot delete shape locked by ${shapeToDelete.lockedByName || 'another user'}`
-      );
+      const errorMsg = `Cannot delete shape locked by ${shapeToDelete.lockedByName || 'another user'}`;
+      console.warn(errorMsg);
+      throw new Error(errorMsg);
     }
     
     // Delete the shape document
@@ -362,6 +364,98 @@ export async function unlockShape(
     await set(lockRef, null);
   } catch (error) {
     console.error('Failed to unlock shape:', error);
+    throw error;
+  }
+}
+
+/**
+ * Lock multiple shapes at once using a batch write
+ * ⚡ ALL SHAPES LOCK SIMULTANEOUSLY for all users (single Firestore transaction)
+ */
+export async function lockShapesBatch(
+  shapeIds: string[],
+  userId: string,
+  userName: string
+): Promise<void> {
+  if (shapeIds.length === 0) return;
+
+  try {
+    const batch = writeBatch(db);
+    const rtdbPromises: Promise<void>[] = [];
+
+    for (const shapeId of shapeIds) {
+      const shapeRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID, SHAPES_SUBCOLLECTION, shapeId);
+      
+      // Add to batch
+      batch.update(shapeRef, {
+        isLocked: true,
+        lockedBy: userId,
+        lockedByName: userName,
+        isDragging: false,
+        draggingBy: null,
+        draggingByName: null,
+      });
+
+      // Set up auto-release in RTDB (parallel)
+      const lockRef = ref(rtdb, `locks/${GLOBAL_CANVAS_ID}/${shapeId}`);
+      rtdbPromises.push(
+        set(lockRef, {
+          userId,
+          userName,
+          timestamp: rtdbServerTimestamp(),
+        }).then(() => onDisconnect(lockRef).remove())
+      );
+    }
+
+    // ⚡ Single atomic commit - all shapes lock at once!
+    await batch.commit();
+    
+    // RTDB updates in parallel
+    await Promise.all(rtdbPromises);
+  } catch (error) {
+    console.error('Failed to batch lock shapes:', error);
+    throw error;
+  }
+}
+
+/**
+ * Unlock multiple shapes at once using a batch write
+ * ⚡ ALL SHAPES UNLOCK SIMULTANEOUSLY for all users (single Firestore transaction)
+ */
+export async function unlockShapesBatch(
+  shapeIds: string[],
+  _userId: string // Kept for consistency with single unlock, but not needed for batch
+): Promise<void> {
+  if (shapeIds.length === 0) return;
+
+  try {
+    const batch = writeBatch(db);
+    const rtdbPromises: Promise<void>[] = [];
+
+    for (const shapeId of shapeIds) {
+      clearLockTimeout(shapeId);
+      
+      const shapeRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID, SHAPES_SUBCOLLECTION, shapeId);
+      
+      // Add to batch
+      batch.update(shapeRef, {
+        isLocked: false,
+        lockedBy: null,
+        lockedByName: null,
+      });
+
+      // Remove from RTDB (parallel)
+      const lockRef = ref(rtdb, `locks/${GLOBAL_CANVAS_ID}/${shapeId}`);
+      rtdbPromises.push(set(lockRef, null));
+    }
+
+    // ⚡ Single atomic commit - all shapes unlock at once!
+    await batch.commit();
+    
+    // RTDB updates in parallel
+    await Promise.all(rtdbPromises);
+  } catch (error) {
+    console.error('Failed to batch unlock shapes:', error);
     throw error;
   }
 }
