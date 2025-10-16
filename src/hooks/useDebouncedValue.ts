@@ -49,7 +49,7 @@ export function useDebouncedCallback<T extends (...args: any[]) => void>(
     }
 
     // Set new timeout
-    const newTimeoutId = setTimeout(() => {
+    const newTimeoutId = window.setTimeout(() => {
       callback(...args);
     }, delay);
 
