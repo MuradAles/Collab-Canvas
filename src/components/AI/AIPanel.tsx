@@ -47,6 +47,7 @@ export function AIPanel({
 }: AIPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isDebugMode, setIsDebugMode] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -122,15 +123,26 @@ export function AIPanel({
           <span className="text-2xl">🤖</span>
           <h2 className="text-lg font-semibold text-white">AI Assistant</h2>
         </div>
-        <button
-          onClick={onClose}
-          className="text-white hover:bg-white/20 rounded-full p-1 transition-colors"
-          title="Close AI Panel"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowHelp(!showHelp)}
+            className="text-white hover:bg-white/20 rounded-full p-1 transition-colors"
+            title="Show available commands"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </button>
+          <button
+            onClick={onClose}
+            className="text-white hover:bg-white/20 rounded-full p-1 transition-colors"
+            title="Close AI Panel"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Controls */}
@@ -158,12 +170,93 @@ export function AIPanel({
         )}
       </div>
 
+      {/* Help Section */}
+      {showHelp && (
+        <div className="border-b border-gray-200 bg-blue-50 p-4 max-h-[300px] overflow-y-auto">
+          <h3 className="font-semibold text-gray-800 mb-3">📚 Available Commands</h3>
+          <div className="space-y-3 text-sm">
+            {/* Create Shapes */}
+            <div className="bg-white p-2 rounded">
+              <span className="font-semibold text-blue-600">🎨 Create Shapes</span>
+              <p className="text-xs text-gray-600 mt-1">Create rectangles, circles, lines, and text</p>
+              <p className="text-xs text-gray-500 italic mt-1">Ex: "Create 3 red circles", "Create a blue rectangle at center"</p>
+            </div>
+
+            {/* Move Shapes */}
+            <div className="bg-white p-2 rounded">
+              <span className="font-semibold text-green-600">↔️ Move Shapes</span>
+              <p className="text-xs text-gray-600 mt-1">Move shapes to positions, arrange in lines</p>
+              <p className="text-xs text-gray-500 italic mt-1">Ex: "Move Rectangle 1 to top-left", "Arrange all circles in a line"</p>
+            </div>
+
+            {/* Resize Shapes */}
+            <div className="bg-white p-2 rounded">
+              <span className="font-semibold text-purple-600">↔️ Resize Shapes</span>
+              <p className="text-xs text-gray-600 mt-1">Change size, width, height, or radius</p>
+              <p className="text-xs text-gray-500 italic mt-1">Ex: "Resize all circles to radius 50", "Make Rectangle 1 200x300"</p>
+            </div>
+
+            {/* Rotate Shapes */}
+            <div className="bg-white p-2 rounded">
+              <span className="font-semibold text-orange-600">↻ Rotate Shapes</span>
+              <p className="text-xs text-gray-600 mt-1">Rotate rectangles and lines</p>
+              <p className="text-xs text-gray-500 italic mt-1">Ex: "Rotate all rectangles to 45 degrees", "Rotate Line 1 by 90"</p>
+            </div>
+
+            {/* Change Color */}
+            <div className="bg-white p-2 rounded">
+              <span className="font-semibold text-red-600">🎨 Change Color</span>
+              <p className="text-xs text-gray-600 mt-1">Change fill color of shapes</p>
+              <p className="text-xs text-gray-500 italic mt-1">Ex: "Make all circles blue", "Change Rectangle 1 to red"</p>
+            </div>
+
+            {/* Align Shapes */}
+            <div className="bg-white p-2 rounded">
+              <span className="font-semibold text-teal-600">⫼ Align Shapes</span>
+              <p className="text-xs text-gray-600 mt-1">Align shapes left, right, top, bottom, or center</p>
+              <p className="text-xs text-gray-500 italic mt-1">Ex: "Align all rectangles to the left", "Center all circles vertically"</p>
+            </div>
+
+            {/* Change Layer */}
+            <div className="bg-white p-2 rounded">
+              <span className="font-semibold text-indigo-600">📚 Change Layer (Z-Index)</span>
+              <p className="text-xs text-gray-600 mt-1">Bring to front, send to back, or reorder</p>
+              <p className="text-xs text-gray-500 italic mt-1">Ex: "Bring Rectangle 1 to front", "Send Circle 1 to back"</p>
+            </div>
+
+            {/* Change Style */}
+            <div className="bg-white p-2 rounded">
+              <span className="font-semibold text-pink-600">✏️ Change Style</span>
+              <p className="text-xs text-gray-600 mt-1">Modify stroke, corner radius, line caps</p>
+              <p className="text-xs text-gray-500 italic mt-1">Ex: "Add 5px red stroke to Rectangle 1", "Set corner radius to 20"</p>
+            </div>
+
+            {/* Delete Shapes */}
+            <div className="bg-white p-2 rounded">
+              <span className="font-semibold text-red-700">🗑️ Delete Shapes</span>
+              <p className="text-xs text-gray-600 mt-1">Remove shapes from canvas</p>
+              <p className="text-xs text-gray-500 italic mt-1">Ex: "Delete all circles", "Delete Rectangle 1"</p>
+            </div>
+
+            {/* Query Canvas */}
+            <div className="bg-white p-2 rounded">
+              <span className="font-semibold text-gray-600">❓ Query Canvas</span>
+              <p className="text-xs text-gray-600 mt-1">Get information about shapes on canvas</p>
+              <p className="text-xs text-gray-500 italic mt-1">Ex: "What shapes are on the canvas?", "Show me all rectangles"</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
           <div className="text-center text-gray-500 mt-8">
             <div className="text-4xl mb-3">💬</div>
             <p className="text-sm">Ask me to create or move shapes!</p>
+            <p className="text-xs text-gray-400 mt-2">
+              Click the <span className="font-semibold">❓</span> icon above to see all available commands
+            </p>
             <div className="mt-4 text-xs text-left bg-gray-50 p-3 rounded-lg">
               <p className="font-semibold mb-2">Try these commands:</p>
               <ul className="space-y-1 text-gray-600">
