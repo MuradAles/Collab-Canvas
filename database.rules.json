@@ -4,7 +4,8 @@
       "$canvasId": {
         ".read": "auth != null",
         "$shapeId": {
-          ".write": "auth != null"
+          ".write": "auth != null",
+          ".validate": "newData.hasChildren(['userId', 'userName', 'timestamp']) || !newData.exists()"
         }
       }
     },
@@ -12,7 +13,8 @@
       "$canvasId": {
         ".read": "auth != null",
         "$userId": {
-          ".write": "auth != null && auth.uid == $userId"
+          ".write": "auth != null && auth.uid == $userId",
+          ".validate": "(newData.exists() && newData.hasChildren(['displayName', 'color']) && newData.child('uid').val() == auth.uid) || !newData.exists()"
         }
       }
     },
@@ -20,7 +22,8 @@
       "$canvasId": {
         ".read": "auth != null",
         "$shapeId": {
-          ".write": "auth != null"
+          ".write": "auth != null",
+          ".validate": "(newData.exists() && newData.hasChildren(['draggingBy', 'timestamp'])) || !newData.exists()"
         }
       }
     },
@@ -28,9 +31,15 @@
       "$canvasId": {
         ".read": "auth != null",
         "$timestamp": {
-          ".write": "auth != null"
+          ".write": "auth != null",
+          ".validate": "newData.hasChildren(['userId', 'command', 'timestamp']) || !newData.exists()"
         }
       }
+    },
+    // Deny access to any undefined paths
+    "$other": {
+      ".read": false,
+      ".write": false
     }
   }
 }

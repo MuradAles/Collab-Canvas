@@ -6,6 +6,7 @@
 import OpenAI from 'openai';
 import type { Shape } from '../../types';
 
+// OpenAI client for development (production uses server-side /api/ai-command.js)
 const openai = new OpenAI({
   apiKey: import.meta.env.VITE_OPENAI_API_KEY,
   dangerouslyAllowBrowser: true, // Required for client-side use
@@ -456,14 +457,43 @@ ${canvasContext}`,
       content: userMessage,
     });
 
-    // Create the chat completion with function calling
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      temperature: 0.3,
-      messages,
-      tools,
-      tool_choice: 'auto',
-    });
+    // Create the chat completion - use client-side in development, server-side in production
+    let response: any;
+    
+    if (import.meta.env.DEV) {
+      // Development: Use client-side OpenAI (API key exposed but only locally)
+      debugInfo.push(`[OpenAI] Using client-side call (development mode)`);
+      response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        temperature: 0.3,
+        messages,
+        tools,
+        tool_choice: 'auto',
+      });
+    } else {
+      // Production: Use server-side API route (API key secure)
+      debugInfo.push(`[OpenAI] Using server-side call (production mode)`);
+      const apiResponse = await fetch('/api/ai-command', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          temperature: 0.3,
+          messages,
+          tools,
+          tool_choice: 'auto',
+        }),
+      });
+
+      if (!apiResponse.ok) {
+        const errorData = await apiResponse.json();
+        throw new Error(errorData.error || 'AI service error');
+      }
+
+      response = await apiResponse.json();
+    }
 
     debugInfo.push(`[OpenAI] Received response`);
 

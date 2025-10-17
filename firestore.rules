@@ -5,13 +5,20 @@ service cloud.firestore {
     
     // Canvas collection rules
     match /canvas/{canvasId} {
-      // Allow authenticated users to read and write to any canvas document
-      allow read, write: if request.auth != null;
+      // Allow authenticated users to read any canvas
+      allow read: if request.auth != null;
+      
+      // Allow write with basic validation to prevent accidental data wipes
+      allow write: if request.auth != null 
+        && validateCanvasWrite(request, resource);
       
       // Shapes subcollection rules (NEW: individual shape documents)
       match /shapes/{shapeId} {
-        // Allow authenticated users to read and write individual shapes
-        allow read, write: if request.auth != null;
+        // Allow read to all authenticated users
+        allow read: if request.auth != null;
+        
+        // Temporarily simplified: allow all authenticated writes (deletes, creates, updates)
+        allow write: if request.auth != null;
       }
     }
     
@@ -19,6 +26,36 @@ service cloud.firestore {
     match /{document=**} {
       allow read, write: if false;
     }
+  }
+  
+  // Validation functions
+  function validateCanvasWrite(request, resource) {
+    // Basic validation to prevent data corruption
+    
+    return request.auth.uid != null
+      && (resource == null || resource.data.keys().hasAll(['canvasId']))
+      // Allow deletion or validate creation/update data
+      && (request.resource.data == null
+          || (request.resource.data.keys().hasAll(['canvasId', 'lastUpdated'])
+              && request.resource.data.canvasId is string
+              && request.resource.data.lastUpdated is number));
+  }
+  
+  function validateShapeWrite(request, resource) {
+    // Simplified validation that allows collaborative operations
+    
+    // Must be authenticated
+    return request.auth.uid != null
+      // For deletes, allow if shape isn't locked by someone else
+      && (request.resource.data == null 
+          ? (resource == null || !resource.data.get('isLocked', false) || resource.data.get('lockedBy', '') == request.auth.uid)
+          // For creates/updates, validate data structure
+          : (request.resource.data.keys().hasAll(['id', 'type', 'name', 'x', 'y'])
+             && request.resource.data.id is string
+             && request.resource.data.type in ['rectangle', 'circle', 'text', 'line']
+             && request.resource.data.name is string
+             && request.resource.data.x is number
+             && request.resource.data.y is number));
   }
 }
 
