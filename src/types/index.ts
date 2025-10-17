@@ -77,6 +77,7 @@ export interface ShapeUpdate {
   height?: number;
   radius?: number;
   rotation?: number;
+  zIndex?: number; // For layer ordering
   fill?: string;
   stroke?: string;
   strokeWidth?: number;

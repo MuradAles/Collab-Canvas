@@ -26,6 +26,7 @@ import { PropertiesPanel } from './PropertiesPanel';
 import { LayersPanel } from './LayersPanel';
 import { CursorsLayer } from './CursorsLayer';
 import { FPSCounter } from './FPSCounter';
+import { AICanvasIntegration } from '../AI/AICanvasIntegration';
 import { useCanvasPanZoom } from '../../hooks/useCanvasPanZoom';
 import { useShapeDrawing } from '../../hooks/useShapeDrawing';
 import { useTextEditing } from '../../hooks/useTextEditing';
@@ -61,11 +62,17 @@ export function Canvas() {
   });
   
   const [showGrid, setShowGrid] = useState(true);
+  const [aiPanelMessage, setAIPanelMessage] = useState<string | undefined>();
   
   // Box selection state
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
   const [selectionRect, setSelectionRect] = useState<SelectionRectType | null>(null);
+
+  // Handle AI panel open (early declaration to maintain hook order)
+  const handleOpenAIPanel = useCallback((message: string) => {
+    setAIPanelMessage(message);
+  }, []);
   
   // Throttling for cursor position updates
   // Supports both RAF (requestAnimationFrame) and time-based throttling
@@ -557,6 +564,9 @@ export function Canvas() {
 
   return (
     <div className="flex h-full w-full">
+      {/* AI Integration */}
+      <AICanvasIntegration initialMessage={aiPanelMessage} />
+      
       {/* Layers Panel */}
       <LayersPanel
         shapes={shapes}
@@ -854,6 +864,7 @@ export function Canvas() {
         selectedCount={selectedIds.length}
         onUpdate={handlePropertyUpdate}
         currentUserId={currentUser?.uid}
+        onOpenAIPanel={handleOpenAIPanel}
       />
     </div>
   );
