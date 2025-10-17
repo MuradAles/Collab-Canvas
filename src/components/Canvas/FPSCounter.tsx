@@ -47,7 +47,7 @@ export function FPSCounter() {
   };
 
   return (
-    <div className="absolute bottom-4 right-4 z-50 bg-gray-900/80 backdrop-blur-sm px-4 py-2 rounded-lg shadow-lg border border-gray-700">
+    <div className="absolute top-4 right-70 z-50 bg-gray-900/80 backdrop-blur-sm px-4 py-2 rounded-lg shadow-lg border border-gray-700">
       <div className="flex items-center gap-2">
         <span className="text-gray-300 text-sm font-medium">FPS:</span>
         <span className={`text-lg font-bold ${getFPSColor()}`}>

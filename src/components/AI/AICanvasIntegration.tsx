@@ -9,6 +9,7 @@ import { AIToast, type ToastMessage } from './AIToast';
 import { sendAICommand, type AIResponse } from '../../services/ai/openai';
 import { executeToolCalls } from '../../services/ai/toolExecutor';
 import { canMakeRequest, recordRequest } from '../../services/ai/rateLimiter';
+import { broadcastAIActivity, subscribeToAIActivity } from '../../services/aiNotifications';
 import { useCanvasContext } from '../../contexts/CanvasContext';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -88,8 +89,16 @@ export function AICanvasIntegration({ onOpenPanel, initialMessage, forceOpen }: 
         // Record request for rate limiting
         recordRequest();
 
-        // Show toast notification to other users
+        // Broadcast AI activity to all users (they will see the toast)
         if (executionResult.success) {
+          await broadcastAIActivity(
+            currentUser.uid,
+            currentUser.displayName || 'Someone',
+            message,
+            executionResult.message
+          );
+          
+          // Show toast locally for the current user as well
           showToast(
             currentUser.displayName || 'Someone',
             executionResult.message
@@ -150,6 +159,21 @@ export function AICanvasIntegration({ onOpenPanel, initialMessage, forceOpen }: 
   const handleDismissToast = (id: string) => {
     setToastMessages(prev => prev.filter(t => t.id !== id));
   };
+
+  // Subscribe to AI activity notifications from other users
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const unsubscribe = subscribeToAIActivity(
+      currentUser.uid,
+      (notification) => {
+        // Show toast for notifications from other users
+        showToast(notification.userName, notification.summary);
+      }
+    );
+
+    return unsubscribe;
+  }, [currentUser]);
 
   // Open panel when initialMessage is provided or forceOpen is true
   useEffect(() => {
