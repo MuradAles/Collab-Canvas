@@ -83,7 +83,7 @@ export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
   const lastCursorUpdateRef = useRef<number>(0);
   const pendingCursorUpdateRef = useRef<{ x: number; y: number } | null>(null);
 
-  const { shapes, selectedIds, selectShape, selectMultipleShapes, addShape, updateShape, deleteShape, deleteShapes, reorderShapes, duplicateShapes, loading, currentTool, setCurrentTool, clearLocalUpdates } = useCanvasContext();
+  const { shapes, selectedIds, selectShape, selectMultipleShapes, addShape, updateShape, updateShapesBatchLocal, deleteShape, deleteShapes, reorderShapes, duplicateShapes, loading, currentTool, setCurrentTool, clearLocalUpdates } = useCanvasContext();
   const { currentUser } = useAuth();
   const { onlineUsers } = usePresenceContext();
   
@@ -191,6 +191,7 @@ export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
     currentUserId: currentUser?.uid,
     currentUserName: currentUser?.displayName || 'Unknown User',
     updateShape,
+    updateShapesBatchLocal,
     selectedIds,
     shapes,
     clearLocalUpdates,
@@ -980,6 +981,9 @@ export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
 
             {/* Multiplayer Cursors - isolated to prevent Canvas re-renders */}
             <CursorsLayer scale={stageScale} />
+
+            {/* Selection drag visualization: All users see actual shapes moving
+                No need for separate indicators since shapes are updated with delta in real-time */}
           </Layer>
         </Stage>
 

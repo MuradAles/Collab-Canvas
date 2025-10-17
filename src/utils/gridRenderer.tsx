@@ -6,6 +6,7 @@
 
 import React from 'react';
 import { Line } from 'react-konva';
+import { CANVAS_BOUNDS } from './constants';
 
 interface RenderGridOptions {
   showGrid: boolean;
@@ -58,15 +59,15 @@ export function renderGrid({
   const startY = Math.floor(renderMinY / gridSize) * gridSize;
   const endY = Math.ceil(renderMaxY / gridSize) * gridSize;
 
-  // Clamp to canvas bounds (0 to 100k)
-  const clampedStartX = Math.max(0, startX);
-  const clampedEndX = Math.min(100000, endX);
-  const clampedStartY = Math.max(0, startY);
-  const clampedEndY = Math.min(100000, endY);
+  // Clamp to canvas bounds (0 to 50k)
+  const clampedStartX = Math.max(CANVAS_BOUNDS.MIN_X, startX);
+  const clampedEndX = Math.min(CANVAS_BOUNDS.MAX_X, endX);
+  const clampedStartY = Math.max(CANVAS_BOUNDS.MIN_Y, startY);
+  const clampedEndY = Math.min(CANVAS_BOUNDS.MAX_Y, endY);
 
   // Vertical lines
   for (let x = clampedStartX; x <= clampedEndX; x += gridSize) {
-    const isCenter = x === 50000; // Center of canvas (was origin at 0,0)
+    const isCenter = x === CANVAS_BOUNDS.CENTER_X; // Center of canvas
     const isThick = x % (gridSize * 5) === 0;
     
     lines.push(
@@ -82,7 +83,7 @@ export function renderGrid({
 
   // Horizontal lines
   for (let y = clampedStartY; y <= clampedEndY; y += gridSize) {
-    const isCenter = y === 50000; // Center of canvas (was origin at 0,0)
+    const isCenter = y === CANVAS_BOUNDS.CENTER_Y; // Center of canvas
     const isThick = y % (gridSize * 5) === 0;
     
     lines.push(

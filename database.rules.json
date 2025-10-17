@@ -27,6 +27,15 @@
         }
       }
     },
+    "selection-drag": {
+      "$canvasId": {
+        ".read": "auth != null",
+        "$userId": {
+          ".write": "auth != null && auth.uid == $userId",
+          ".validate": "(newData.exists() && newData.hasChildren(['deltaX', 'deltaY', 'timestamp']) && (!newData.hasChild('shapeIds') || newData.hasChildren(['userId', 'userName', 'userColor', 'shapeIds', 'shapeCount', 'initialPositions']))) || !newData.exists()"
+        }
+      }
+    },
     "ai-activity": {
       "$canvasId": {
         ".read": "auth != null",

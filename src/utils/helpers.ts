@@ -5,7 +5,7 @@
  */
 
 import { CURSOR_COLORS } from './constants';
-import type { Point, Bounds } from '../types';
+import type { Point, Bounds, Shape } from '../types';
 
 // ============================================================================
 // User & Display Name Helpers
@@ -306,5 +306,52 @@ function lineSegmentsIntersect(
   const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denominator;
 
   return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+}
+
+/**
+ * Calculates the bounding box that encompasses multiple shapes
+ * Used for selection drag optimization
+ */
+export function calculateBoundingBox(shapes: Shape[]): { x: number; y: number; width: number; height: number } {
+  if (shapes.length === 0) {
+    return { x: 0, y: 0, width: 0, height: 0 };
+  }
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  shapes.forEach((shape) => {
+    if (shape.type === 'rectangle' || shape.type === 'text') {
+      // Rectangle and text use x, y, width, height
+      const shapeWidth = shape.width || 100;
+      const shapeHeight = shape.type === 'rectangle' ? shape.height : (shape.fontSize || 16);
+      
+      minX = Math.min(minX, shape.x);
+      minY = Math.min(minY, shape.y);
+      maxX = Math.max(maxX, shape.x + shapeWidth);
+      maxY = Math.max(maxY, shape.y + shapeHeight);
+    } else if (shape.type === 'circle') {
+      // Circle uses x, y (center) and radius
+      minX = Math.min(minX, shape.x - shape.radius);
+      minY = Math.min(minY, shape.y - shape.radius);
+      maxX = Math.max(maxX, shape.x + shape.radius);
+      maxY = Math.max(maxY, shape.y + shape.radius);
+    } else if (shape.type === 'line') {
+      // Line uses x1, y1, x2, y2
+      minX = Math.min(minX, shape.x1, shape.x2);
+      minY = Math.min(minY, shape.y1, shape.y2);
+      maxX = Math.max(maxX, shape.x1, shape.x2);
+      maxY = Math.max(maxY, shape.y1, shape.y2);
+    }
+  });
+
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
 }
 

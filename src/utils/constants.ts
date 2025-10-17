@@ -7,20 +7,20 @@
 // Canvas Dimensions
 // ============================================================================
 
-// Endless Canvas: 100,000 x 100,000 pixels (0 to 100k)
-export const CANVAS_WIDTH = 100000;
-export const CANVAS_HEIGHT = 100000;
+// Endless Canvas: 25,000 x 25,000 pixels (0 to 25k)
+export const CANVAS_WIDTH = 25000;
+export const CANVAS_HEIGHT = 25000;
 
 // Canvas bounds for shape positioning (all positive for simplicity)
 export const CANVAS_BOUNDS = {
   MIN_X: 0,
-  MAX_X: 100000,
+  MAX_X: 25000,
   MIN_Y: 0,
-  MAX_Y: 100000,
-  WIDTH: 100000,
-  HEIGHT: 100000,
-  CENTER_X: 50000,
-  CENTER_Y: 50000,
+  MAX_Y: 25000,
+  WIDTH: 25000,
+  HEIGHT: 25000,
+  CENTER_X: 12500,
+  CENTER_Y: 12500,
 };
 
 // Default viewport dimensions (will be dynamic based on window size)
@@ -103,4 +103,13 @@ export const CURSOR_COLORS = [
 
 export const TARGET_FPS = 60;
 export const MAX_SHAPES = 500; // Performance target for MVP
+
+// Multi-shape drag optimization threshold
+// When dragging this many or more shapes, use selection drag (delta-based)
+// instead of individual shape updates for better performance
+export const MULTI_DRAG_THRESHOLD = 2; // Changed from 10 to 2 - optimize all multi-drags
+
+// Drag update throttle (in milliseconds)
+// All drag updates (individual and selection) throttled to 50ms (20 times per second)
+export const DRAG_THROTTLE_MS = 50;
 
