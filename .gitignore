@@ -30,3 +30,5 @@ dist-ssr
 .firebase/
 firebase-debug.log
 *-debug.log
+
+ai-development

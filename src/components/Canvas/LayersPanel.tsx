@@ -4,7 +4,7 @@
  * Optimized with React.memo to prevent unnecessary re-renders
  */
 
-import { useState, useCallback, memo } from 'react';
+import { useState, useCallback, memo, useMemo } from 'react';
 import type { Shape } from '../../types';
 
 interface LayersPanelProps {
@@ -13,9 +13,16 @@ interface LayersPanelProps {
   onSelectShape: (id: string, addToSelection?: boolean) => void;
   onReorderShapes: (newOrder: Shape[]) => void;
   currentUserId?: string;
+  cullingStats?: {
+    totalShapes: number;
+    visibleShapes: number;
+    culledShapes: number;
+    cullingPercentage: number;
+  };
+  onNavigateToShape?: (shapeId: string) => void;
 }
 
-function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderShapes, currentUserId }: LayersPanelProps) {
+function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderShapes, currentUserId, cullingStats, onNavigateToShape }: LayersPanelProps) {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -200,7 +207,8 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
   };
 
   // Render shapes in reverse order (top of list = top of canvas)
-  const reversedShapes = [...shapes].reverse();
+  // Memoize to avoid creating new array on every render
+  const reversedShapes = useMemo(() => [...shapes].reverse(), [shapes]);
 
   return (
     <div className={`bg-white border-r border-gray-200 flex flex-col h-full transition-all duration-300 ease-in-out ${isCollapsed ? 'w-16' : 'w-60'}`}>
@@ -211,9 +219,15 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
             Layers
           </h3>
           <div className="flex items-center justify-between mt-1">
-            <p className="text-xs text-gray-500 leading-6">
-              {shapes.length} {shapes.length === 1 ? 'shape' : 'shapes'}
-            </p>
+            {cullingStats && cullingStats.totalShapes > 0 ? (
+              <p className="text-xs text-gray-500 leading-6">
+                <span className="text-blue-600 font-medium">{cullingStats.visibleShapes}</span> of {cullingStats.totalShapes} {cullingStats.totalShapes === 1 ? 'shape' : 'shapes'}
+              </p>
+            ) : (
+              <p className="text-xs text-gray-500 leading-6">
+                {shapes.length} {shapes.length === 1 ? 'shape' : 'shapes'}
+              </p>
+            )}
             {selectedIds.length > 0 && (
               <p className="text-xs font-medium text-green-600 bg-green-50 px-2 rounded leading-6 ml-2">
                 {selectedIds.length} selected
@@ -300,7 +314,18 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
                   onDragLeave={handleDragLeave}
                   onDrop={(e) => handleDrop(e, index)}
                   onDragEnd={handleDragEnd}
-                  onClick={(e) => !isLockedByOther && onSelectShape(shape.id, e.shiftKey)}
+                  onClick={(e) => {
+                    if (!isLockedByOther) {
+                      onSelectShape(shape.id, e.shiftKey);
+                    }
+                  }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    if (onNavigateToShape) {
+                      onNavigateToShape(shape.id);
+                    }
+                  }}
+                  title={onNavigateToShape ? "Double-click to jump to this shape" : undefined}
                   className={`
                     group flex items-center gap-2 px-2 py-2 rounded-md 
                     transition-all duration-150
@@ -399,7 +424,7 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
 
 // Export memoized component to prevent unnecessary re-renders
 export const LayersPanel = memo(LayersPanelComponent, (prevProps, nextProps) => {
-  // Only re-render if shapes array changed or selectedIds changed
+  // Only re-render if shapes array changed or selectedIds changed or cullingStats changed
   // Compare only properties that affect LayersPanel UI (not JSON.stringify - too expensive!)
   
   // Check if selected IDs changed
@@ -408,6 +433,10 @@ export const LayersPanel = memo(LayersPanelComponent, (prevProps, nextProps) => 
   
   // Check if shapes changed (only compare properties displayed in LayersPanel)
   if (prevProps.shapes.length !== nextProps.shapes.length) return false;
+  
+  // Check if culling stats changed (for the "Visible X of Y" header)
+  if (prevProps.cullingStats?.visibleShapes !== nextProps.cullingStats?.visibleShapes) return false;
+  if (prevProps.cullingStats?.totalShapes !== nextProps.cullingStats?.totalShapes) return false;
   
   // Compare only critical properties that affect LayersPanel rendering:
   // - id, name, zIndex (what we display)

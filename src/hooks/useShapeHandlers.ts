@@ -6,7 +6,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type Konva from 'konva';
 import type { Shape, LineShape } from '../types';
-import { CANVAS_WIDTH, CANVAS_HEIGHT } from '../utils/constants';
+import { CANVAS_BOUNDS } from '../utils/constants';
 import { constrainRectangle } from '../utils/helpers';
 
 interface UseShapeHandlersProps {
@@ -88,19 +88,19 @@ export function useShapeHandlers({
 
       if (shape.type === 'rectangle') {
         const constrained = constrainRectangle(x, y, shape.width, shape.height, {
-          minX: 0,
-          minY: 0,
-          maxX: CANVAS_WIDTH,
-          maxY: CANVAS_HEIGHT,
+          minX: CANVAS_BOUNDS.MIN_X,
+          minY: CANVAS_BOUNDS.MIN_Y,
+          maxX: CANVAS_BOUNDS.MAX_X,
+          maxY: CANVAS_BOUNDS.MAX_Y,
         });
         constrainedX = constrained.x;
         constrainedY = constrained.y;
       } else if (shape.type === 'circle') {
-        constrainedX = Math.max(shape.radius, Math.min(CANVAS_WIDTH - shape.radius, x));
-        constrainedY = Math.max(shape.radius, Math.min(CANVAS_HEIGHT - shape.radius, y));
+        constrainedX = Math.max(CANVAS_BOUNDS.MIN_X + shape.radius, Math.min(CANVAS_BOUNDS.MAX_X - shape.radius, x));
+        constrainedY = Math.max(CANVAS_BOUNDS.MIN_Y + shape.radius, Math.min(CANVAS_BOUNDS.MAX_Y - shape.radius, y));
       } else {
-        constrainedX = Math.max(0, Math.min(CANVAS_WIDTH - 100, x));
-        constrainedY = Math.max(0, Math.min(CANVAS_HEIGHT - 50, y));
+        constrainedX = Math.max(CANVAS_BOUNDS.MIN_X, Math.min(CANVAS_BOUNDS.MAX_X - 100, x));
+        constrainedY = Math.max(CANVAS_BOUNDS.MIN_Y, Math.min(CANVAS_BOUNDS.MAX_Y - 50, y));
       }
 
       onDragEnd(constrainedX, constrainedY);

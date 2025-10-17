@@ -161,7 +161,26 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
           // Schedule update on next frame (max 60fps)
           dragUpdateRafRef.current = requestAnimationFrame(() => {
             if (pendingDragPositionsRef.current) {
-              setDragPositions(pendingDragPositionsRef.current);
+              // Use functional update to avoid dependency on dragPositions state
+              setDragPositions(prev => {
+                // Only update if positions actually changed
+                const newPositions = pendingDragPositionsRef.current;
+                if (!newPositions) return prev;
+                
+                // Quick check: if sizes are different, definitely update
+                if (prev.size !== newPositions.size) return newPositions;
+                
+                // Check if any position actually changed
+                let hasChanges = false;
+                newPositions.forEach((pos, id) => {
+                  const prevPos = prev.get(id);
+                  if (!prevPos || prevPos.x !== pos.x || prevPos.y !== pos.y) {
+                    hasChanges = true;
+                  }
+                });
+                
+                return hasChanges ? newPositions : prev;
+              });
               pendingDragPositionsRef.current = null;
             }
             dragUpdateRafRef.current = null;

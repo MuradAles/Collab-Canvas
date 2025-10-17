@@ -7,8 +7,21 @@
 // Canvas Dimensions
 // ============================================================================
 
-export const CANVAS_WIDTH = 5000;
-export const CANVAS_HEIGHT = 5000;
+// Endless Canvas: 100,000 x 100,000 pixels (0 to 100k)
+export const CANVAS_WIDTH = 100000;
+export const CANVAS_HEIGHT = 100000;
+
+// Canvas bounds for shape positioning (all positive for simplicity)
+export const CANVAS_BOUNDS = {
+  MIN_X: 0,
+  MAX_X: 100000,
+  MIN_Y: 0,
+  MAX_Y: 100000,
+  WIDTH: 100000,
+  HEIGHT: 100000,
+  CENTER_X: 50000,
+  CENTER_Y: 50000,
+};
 
 // Default viewport dimensions (will be dynamic based on window size)
 export const DEFAULT_VIEWPORT_WIDTH = 1400;

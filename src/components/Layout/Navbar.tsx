@@ -7,7 +7,11 @@ import { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { usePresenceContext } from '../../contexts/PresenceContext';
 
-export function Navbar() {
+interface NavbarProps {
+  onNavigateToUser?: ((userId: string) => void) | null;
+}
+
+export function Navbar({ onNavigateToUser }: NavbarProps = {}) {
   const { currentUser, logout } = useAuth();
   const { onlineUsers } = usePresenceContext();
   const [showUserDropdown, setShowUserDropdown] = useState(false);
@@ -55,15 +59,17 @@ export function Navbar() {
             
             return (
               <div className="relative">
+                {/* User Avatars - Click to open dropdown */}
                 <div 
                   className="flex -space-x-2 cursor-pointer"
-                  onMouseEnter={() => setShowOnlineUsersDropdown(true)}
-                  onMouseLeave={() => setShowOnlineUsersDropdown(false)}
+                  onClick={() => setShowOnlineUsersDropdown(!showOnlineUsersDropdown)}
+                  title="Click to see online users"
                 >
                   {otherUsers.slice(0, 5).map((user) => (
                     <div
                       key={user.uid}
                       className={`w-8 h-8 rounded-full ${getUserColor(user.uid)} flex items-center justify-center text-white text-xs font-medium border-2 border-white hover:scale-110 transition-transform`}
+                      title={user.displayName}
                     >
                       {user.displayName.charAt(0).toUpperCase()}
                     </div>
@@ -79,34 +85,49 @@ export function Navbar() {
 
                 {/* Online Users Dropdown */}
                 {showOnlineUsersDropdown && (
-                  <div 
-                    className="absolute top-full right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-40"
-                    onMouseEnter={() => setShowOnlineUsersDropdown(true)}
-                    onMouseLeave={() => setShowOnlineUsersDropdown(false)}
-                  >
-                    <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      Online Users ({otherUsers.length})
-                    </div>
-                    <div className="max-h-64 overflow-y-auto">
-                      {otherUsers.map((user) => (
-                        <div
-                          key={user.uid}
-                          className="px-3 py-2 hover:bg-gray-50 flex items-center gap-3"
-                        >
+                  <>
+                    {/* Backdrop to close dropdown */}
+                    <div 
+                      className="fixed inset-0 z-30" 
+                      onClick={() => setShowOnlineUsersDropdown(false)}
+                    />
+                    
+                    <div 
+                      className="absolute top-full right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-40"
+                    >
+                      <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                        Online Users ({otherUsers.length})
+                      </div>
+                      <div className="max-h-64 overflow-y-auto">
+                        {otherUsers.map((user) => (
                           <div
-                            className={`w-8 h-8 rounded-full ${getUserColor(user.uid)} flex items-center justify-center text-white text-xs font-medium flex-shrink-0`}
+                            key={user.uid}
+                            className="px-3 py-2 hover:bg-blue-50 flex items-center gap-3 cursor-pointer transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onNavigateToUser?.(user.uid);
+                              setShowOnlineUsersDropdown(false);
+                            }}
+                            title={`Click to jump to ${user.displayName}`}
                           >
-                            {user.displayName.charAt(0).toUpperCase()}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-gray-900 truncate">
-                              {user.displayName}
+                            <div
+                              className={`w-10 h-10 rounded-full ${getUserColor(user.uid)} flex items-center justify-center text-white text-sm font-medium flex-shrink-0`}
+                            >
+                              {user.displayName.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-gray-900 truncate">
+                                {user.displayName}
+                              </div>
+                              <div className="text-xs text-blue-600 font-medium">
+                                Click to jump to their cursor
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  </>
                 )}
               </div>
             );

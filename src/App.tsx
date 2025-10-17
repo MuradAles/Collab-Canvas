@@ -9,9 +9,11 @@ import { PresenceProvider } from './contexts/PresenceContext';
 import { Login } from './components/Auth/Login';
 import { Navbar } from './components/Layout/Navbar';
 import { Canvas } from './components/Canvas/Canvas';
+import { useState } from 'react';
 
 function AppContent() {
   const { currentUser, loading } = useAuth();
+  const [navigateToUser, setNavigateToUser] = useState<((userId: string) => void) | null>(null);
 
   // Show loading state while checking authentication
   if (loading) {
@@ -35,9 +37,9 @@ function AppContent() {
     <PresenceProvider>
       <CanvasProvider>
         <div className="h-screen w-screen flex flex-col overflow-hidden">
-          <Navbar />
+          <Navbar onNavigateToUser={navigateToUser} />
           <main className="flex-1 bg-gray-50 overflow-hidden">
-            <Canvas />
+            <Canvas onSetNavigateToUser={(fn) => setNavigateToUser(() => fn)} />
           </main>
         </div>
       </CanvasProvider>

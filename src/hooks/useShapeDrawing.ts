@@ -7,7 +7,7 @@ import { useState, useCallback } from 'react';
 import type Konva from 'konva';
 import type { Tool } from '../components/Canvas/ToolSelector';
 import type { RectangleShape, CircleShape, TextShape, LineShape } from '../types';
-import { screenToCanvas, normalizeRectangle } from '../utils/helpers';
+import { screenToCanvas, normalizeRectangle, validateShapePosition, clampToCanvasBounds } from '../utils/helpers';
 import {
   DEFAULT_SHAPE_FILL,
   DEFAULT_SHAPE_STROKE,
@@ -174,10 +174,22 @@ export function useShapeDrawing({
         newShapePreview.height >= MIN_SHAPE_SIZE
       ) {
         if (selectedTool === 'rectangle') {
+          // Validate and clamp position to canvas bounds
+          const validated = validateShapePosition(
+            newShapePreview.x,
+            newShapePreview.y,
+            newShapePreview.width,
+            newShapePreview.height
+          );
+
+          if (validated.wasClamped) {
+            console.warn('Shape position clamped to canvas bounds');
+          }
+
           const rectShape: Omit<RectangleShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'> = {
             type: 'rectangle',
-            x: newShapePreview.x,
-            y: newShapePreview.y,
+            x: validated.x,
+            y: validated.y,
             width: newShapePreview.width,
             height: newShapePreview.height,
             rotation: 0,
@@ -191,10 +203,21 @@ export function useShapeDrawing({
         } else if (selectedTool === 'circle') {
           // Create circle based on drag size
           const radius = Math.max(newShapePreview.width, newShapePreview.height) / 2;
+          const centerX = newShapePreview.x + newShapePreview.width / 2;
+          const centerY = newShapePreview.y + newShapePreview.height / 2;
+
+          // Clamp circle center to bounds (accounting for radius)
+          const clampedCenterX = clampToCanvasBounds(centerX, -50000 + radius, 50000 - radius);
+          const clampedCenterY = clampToCanvasBounds(centerY, -50000 + radius, 50000 - radius);
+
+          if (clampedCenterX !== centerX || clampedCenterY !== centerY) {
+            console.warn('Circle position clamped to canvas bounds');
+          }
+
           const circleShape: Omit<CircleShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'> = {
             type: 'circle',
-            x: newShapePreview.x + newShapePreview.width / 2,
-            y: newShapePreview.y + newShapePreview.height / 2,
+            x: clampedCenterX,
+            y: clampedCenterY,
             radius: radius,
             rotation: 0,
             zIndex: 0,
@@ -214,13 +237,24 @@ export function useShapeDrawing({
       const length = Math.sqrt(dx * dx + dy * dy);
 
       if (length >= MIN_SHAPE_SIZE) {
+        // Clamp line endpoints to canvas bounds
+        const x1 = clampToCanvasBounds(newLinePreview.x1);
+        const y1 = clampToCanvasBounds(newLinePreview.y1);
+        const x2 = clampToCanvasBounds(newLinePreview.x2);
+        const y2 = clampToCanvasBounds(newLinePreview.y2);
+
+        if (x1 !== newLinePreview.x1 || y1 !== newLinePreview.y1 || 
+            x2 !== newLinePreview.x2 || y2 !== newLinePreview.y2) {
+          console.warn('Line endpoints clamped to canvas bounds');
+        }
+
         const lineShape: Omit<LineShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'> = {
           type: 'line',
           // Lines use absolute x1, y1, x2, y2 coordinates - no need for x, y, or rotation
-          x1: newLinePreview.x1,
-          y1: newLinePreview.y1,
-          x2: newLinePreview.x2,
-          y2: newLinePreview.y2,
+          x1,
+          y1,
+          x2,
+          y2,
           zIndex: 0,
           stroke: DEFAULT_SHAPE_STROKE,
           strokeWidth: DEFAULT_SHAPE_STROKE_WIDTH,
@@ -263,11 +297,18 @@ export function useShapeDrawing({
         stageScale
       );
 
+      // Validate and clamp text position
+      const validated = validateShapePosition(canvasPos.x, canvasPos.y, 200, DEFAULT_TEXT_SIZE);
+      
+      if (validated.wasClamped) {
+        console.warn('Text position clamped to canvas bounds');
+      }
+
       // Create text immediately at click position with default "Text" content
       const textShape: Omit<TextShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'> = {
         type: 'text',
-        x: canvasPos.x,
-        y: canvasPos.y,
+        x: validated.x,
+        y: validated.y,
         rotation: 0,
         zIndex: 0,
         text: 'Text',

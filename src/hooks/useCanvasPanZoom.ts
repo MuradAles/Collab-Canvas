@@ -1,13 +1,13 @@
 /**
  * useCanvasPanZoom Hook
  * Manages canvas pan, zoom, and viewport positioning
+ * Updated for endless canvas - no pan limits!
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import type Konva from 'konva';
 import {
-  CANVAS_WIDTH,
-  CANVAS_HEIGHT,
+  CANVAS_BOUNDS,
   MIN_ZOOM,
   MAX_ZOOM,
   DEFAULT_ZOOM,
@@ -24,58 +24,44 @@ export function useCanvasPanZoom({ stageRef, stageSize }: UseCanvasPanZoomProps)
   const [isInitialPositionSet, setIsInitialPositionSet] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
+  
+  // Helper to only update position if it actually changed (prevents infinite loops)
+  const updateStagePosition = useCallback((newPos: { x: number; y: number }) => {
+    setStagePosition(prev => {
+      // Only update if position changed by more than 0.01 pixels
+      if (Math.abs(prev.x - newPos.x) < 0.01 && Math.abs(prev.y - newPos.y) < 0.01) {
+        return prev; // Return same object reference to prevent re-render
+      }
+      return newPos;
+    });
+  }, []);
 
   /**
-   * Constrain stage position to canvas boundaries
+   * ENDLESS CANVAS: No position constraints!
+   * Allow infinite panning in all directions
+   * Note: Shapes themselves are still clamped to 0 to 100k bounds
    */
   const constrainPosition = useCallback(
-    (
-      pos: { x: number; y: number },
-      scale: number,
-      viewportWidth: number,
-      viewportHeight: number
-    ) => {
-      const canvasScaledWidth = CANVAS_WIDTH * scale;
-      const canvasScaledHeight = CANVAS_HEIGHT * scale;
-
-      let newX = pos.x;
-      let newY = pos.y;
-
-      // Constrain X
-      if (canvasScaledWidth > viewportWidth) {
-        const minX = viewportWidth - canvasScaledWidth;
-        const maxX = 0;
-        newX = Math.max(minX, Math.min(maxX, pos.x));
-      } else {
-        newX = (viewportWidth - canvasScaledWidth) / 2;
-      }
-
-      // Constrain Y
-      if (canvasScaledHeight > viewportHeight) {
-        const minY = viewportHeight - canvasScaledHeight;
-        const maxY = 0;
-        newY = Math.max(minY, Math.min(maxY, pos.y));
-      } else {
-        newY = (viewportHeight - canvasScaledHeight) / 2;
-      }
-
-      return { x: newX, y: newY };
+    (pos: { x: number; y: number }) => {
+      // No constraints - allow infinite panning!
+      return pos;
     },
     []
   );
 
   /**
-   * Center canvas on initial load
+   * Center canvas on initial load - now centers on origin (0, 0)
    */
   useEffect(() => {
     if (!isInitialPositionSet && stageSize.width > 0 && stageSize.height > 0) {
-      const centerX = stageSize.width / 2 - (CANVAS_WIDTH / 2) * stageScale;
-      const centerY = stageSize.height / 2 - (CANVAS_HEIGHT / 2) * stageScale;
+      // Center on origin (50000, 50000) of the endless canvas at default zoom
+      const centerX = stageSize.width / 2 - (CANVAS_BOUNDS.CENTER_X) * DEFAULT_ZOOM;
+      const centerY = stageSize.height / 2 - (CANVAS_BOUNDS.CENTER_Y) * DEFAULT_ZOOM;
       
-      setStagePosition({ x: centerX, y: centerY });
+      updateStagePosition({ x: centerX, y: centerY });
       setIsInitialPositionSet(true);
     }
-  }, [stageSize, stageScale, isInitialPositionSet]);
+  }, [stageSize, isInitialPositionSet, updateStagePosition]);
 
   /**
    * Handle zoom with mousewheel
@@ -109,17 +95,12 @@ export function useCanvasPanZoom({ stageRef, stageSize }: UseCanvasPanZoomProps)
         y: pointer.y - mousePointTo.y * newScale,
       };
 
-      const constrainedPos = constrainPosition(
-        newPos,
-        newScale,
-        stageSize.width,
-        stageSize.height
-      );
+      const constrainedPos = constrainPosition(newPos);
 
       setStageScale(newScale);
-      setStagePosition(constrainedPos);
+      updateStagePosition(constrainedPos);
     },
-    [stageRef, stageSize, constrainPosition]
+    [stageRef, constrainPosition, updateStagePosition]
   );
 
   /**
@@ -161,15 +142,10 @@ export function useCanvasPanZoom({ stageRef, stageSize }: UseCanvasPanZoomProps)
       y: pointer.y - panStart.y
     };
     
-    const constrainedPos = constrainPosition(
-      newPos,
-      stageScale,
-      stageSize.width,
-      stageSize.height
-    );
+    const constrainedPos = constrainPosition(newPos);
     
-    setStagePosition(constrainedPos);
-  }, [isPanning, panStart, stageRef, stageScale, stageSize, constrainPosition]);
+    updateStagePosition(constrainedPos);
+  }, [isPanning, panStart, stageRef, constrainPosition, updateStagePosition]);
 
   const handlePanEnd = useCallback(() => {
     setIsPanning(false);
@@ -202,16 +178,11 @@ export function useCanvasPanZoom({ stageRef, stageSize }: UseCanvasPanZoomProps)
       y: center.y - mousePointTo.y * newScale,
     };
 
-    const constrainedPos = constrainPosition(
-      newPos,
-      newScale,
-      stageSize.width,
-      stageSize.height
-    );
+    const constrainedPos = constrainPosition(newPos);
 
     setStageScale(newScale);
-    setStagePosition(constrainedPos);
-  }, [stageRef, stageSize, constrainPosition]);
+    updateStagePosition(constrainedPos);
+  }, [stageRef, stageSize, constrainPosition, updateStagePosition]);
 
   const handleZoomOut = useCallback(() => {
     const stage = stageRef.current;
@@ -236,28 +207,25 @@ export function useCanvasPanZoom({ stageRef, stageSize }: UseCanvasPanZoomProps)
       y: center.y - mousePointTo.y * newScale,
     };
 
-    const constrainedPos = constrainPosition(
-      newPos,
-      newScale,
-      stageSize.width,
-      stageSize.height
-    );
+    const constrainedPos = constrainPosition(newPos);
 
     setStageScale(newScale);
-    setStagePosition(constrainedPos);
-  }, [stageRef, stageSize, constrainPosition]);
+    updateStagePosition(constrainedPos);
+  }, [stageRef, stageSize, constrainPosition, updateStagePosition]);
 
   const handleResetView = useCallback(() => {
     setStageScale(DEFAULT_ZOOM);
-    // Center the canvas in the viewport
-    const centerX = (stageSize.width - CANVAS_WIDTH * DEFAULT_ZOOM) / 2;
-    const centerY = (stageSize.height - CANVAS_HEIGHT * DEFAULT_ZOOM) / 2;
-    setStagePosition({ x: centerX, y: centerY });
-  }, [stageSize]);
+    // Center on origin (50000, 50000) of the endless canvas
+    const centerX = stageSize.width / 2 - (CANVAS_BOUNDS.CENTER_X) * DEFAULT_ZOOM;
+    const centerY = stageSize.height / 2 - (CANVAS_BOUNDS.CENTER_Y) * DEFAULT_ZOOM;
+    updateStagePosition({ x: centerX, y: centerY });
+  }, [stageSize, updateStagePosition]);
 
   return {
     stageScale,
     stagePosition,
+    setStageScale,
+    setStagePosition: updateStagePosition,
     isPanning,
     handleWheel,
     handlePanStart,

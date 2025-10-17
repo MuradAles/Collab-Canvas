@@ -1,6 +1,7 @@
 /**
  * Utility Helper Functions
  * Provides common utility functions used throughout the application
+ * Updated for endless canvas (0 to 100k)
  */
 
 import { CURSOR_COLORS } from './constants';
@@ -98,6 +99,36 @@ export function constrainRectangle(
   const constrainedX = Math.max(bounds.minX, Math.min(bounds.maxX - width, x));
   const constrainedY = Math.max(bounds.minY, Math.min(bounds.maxY - height, y));
   return { x: constrainedX, y: constrainedY };
+}
+
+/**
+ * Clamps a value to the canvas bounds (0 to 100k)
+ */
+export function clampToCanvasBounds(value: number, min: number = 0, max: number = 100000): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+/**
+ * Validates and clamps shape position to canvas bounds (0 to 100k)
+ * Returns clamped position and whether clamping occurred
+ */
+export function validateShapePosition(
+  x: number,
+  y: number,
+  width: number = 0,
+  height: number = 0
+): { x: number; y: number; wasClamped: boolean } {
+  const minX = 0;
+  const maxX = 100000;
+  const minY = 0;
+  const maxY = 100000;
+
+  const clampedX = Math.max(minX, Math.min(maxX - width, x));
+  const clampedY = Math.max(minY, Math.min(maxY - height, y));
+
+  const wasClamped = clampedX !== x || clampedY !== y;
+
+  return { x: clampedX, y: clampedY, wasClamped };
 }
 
 // ============================================================================
