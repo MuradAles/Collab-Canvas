@@ -403,4 +403,304 @@ Plus 10 files from previous line shape implementation.
 
 ---
 
+## Post-MVP Enhancement: AI Canvas Agent
+
+### Phase 9: Natural Language Shape Manipulation
+
+**Date**: October 2025  
+**Context**: After completing the MVP, added AI-powered natural language commands to the canvas using OpenAI's GPT-4o Mini.
+
+---
+
+#### The Vision
+
+Instead of manually clicking tools and dragging shapes, users can now type natural language commands like:
+- *"Create 5 blue circles in a row"*
+- *"Move all rectangles to the top-left"*
+- *"Align all shapes horizontally"*
+- *"Change Circle 1 to red and resize it to radius 100"*
+
+The AI understands context, remembers previous commands, and provides helpful feedback.
+
+---
+
+#### Features Implemented (10 AI Tools)
+
+**1. 🎨 Create Shapes**
+- Create rectangles, circles, lines, and text with custom colors, sizes, and positions
+- Support for preset positions (center, top-left) and relative positioning (near, below)
+- Batch creation with random properties (size, color, position)
+
+**2. ↔️ Move Shapes**
+- Move shapes to exact coordinates, preset positions, or relative to other shapes
+- Arrange multiple shapes in lines with intelligent spacing based on actual dimensions
+- Respect canvas bounds (5000x5000px)
+
+**3. ↔️ Resize Shapes**
+- Change width/height for rectangles
+- Change radius for circles
+- Maintain aspect ratios when needed
+
+**4. ↻ Rotate Shapes**
+- Rotate rectangles and lines by angle
+- Support relative rotation (add to current) or absolute rotation
+
+**5. 🎨 Change Color**
+- Change fill color of one or multiple shapes
+- Support color names (red, blue) and hex codes (#FF5733)
+
+**6. ⫼ Align Shapes**
+- Align multiple shapes along common axes
+- Support left, right, top, bottom, center-vertical, center-horizontal alignment
+
+**7. 📚 Change Layer (Z-Index)**
+- Bring shapes to front or send to back
+- Step forward/backward in layer order
+- Support size-based layering (small on top, big on bottom)
+
+**8. ✏️ Change Style**
+- Modify stroke color, width, and position
+- Change corner radius for rectangles
+- Change line caps for lines (round, square, butt)
+
+**9. 🗑️ Delete Shapes**
+- Delete one or multiple shapes by name
+- Support batch deletion (e.g., "delete all circles")
+
+**10. ❓ Query Canvas**
+- Get detailed information about shapes on the canvas
+- List all shapes with their properties (position, size, color)
+- Group information by shape type
+
+---
+
+#### UI Components Built
+
+**1. AI Panel (`AIPanel.tsx`)**
+- Full-height side panel with gradient header
+- Chat-style message history (user + AI responses)
+- Debug mode toggle for development
+- Help button with comprehensive command reference
+- Clear history button
+
+**2. AI Input (`AIInput.tsx`)**
+- Text input with auto-focus
+- Send button and Enter key support
+- Loading state with disabled input
+- Initial message support (pre-filled from canvas)
+
+**3. AI Message (`AIMessage.tsx`)**
+- User and AI message styles
+- Tool call visualization with syntax highlighting
+- Debug information display (OpenAI calls, context, results)
+- Error message styling
+
+**4. AI Toast (`AIToast.tsx`)**
+- Floating notification for AI activity
+- Auto-dismiss after 3 seconds
+- Smooth fade-in/fade-out animations
+
+**5. AI Integration (`AICanvasIntegration.tsx`)**
+- Global keyboard shortcut (Cmd/Ctrl+K) to open AI panel
+- Message orchestration and history management
+- OpenAI API integration
+- Success/error handling
+
+---
+
+#### Technical Architecture
+
+**Core Services:**
+
+1. **`openai.ts`** - OpenAI API Integration
+   - GPT-4o Mini function calling
+   - 10 tool schemas with detailed parameters
+   - Conversation history management (last 10 messages)
+   - Canvas context building (current shapes, positions, properties)
+   - Intelligent prompting with examples and guidance
+
+2. **`positionParser.ts`** - Position Parsing Utility
+   - Preset positions (center, top-left, top-right, etc.)
+   - Exact coordinates (x, y)
+   - Relative positioning (near, below, right of another shape)
+   - Offset and direction support
+   - Shape-aware centering (accounts for width/height/radius)
+
+3. **`toolExecutor.ts`** - Tool Execution Engine
+   - Executes all 10 AI tools
+   - Batch operation support (multiple shapes at once)
+   - Firestore sync timing with retry logic
+   - Success message generation
+   - Detailed debug logging
+
+4. **`rateLimiter.ts`** - Rate Limiting
+   - Client-side rate limiting (10 commands/min)
+   - Shape creation limits (20 shapes per command)
+   - Token bucket algorithm
+   - User-friendly error messages
+
+---
+
+#### Key Technical Challenges Solved
+
+**Challenge 1: Shape Naming & Recognition**
+- **Problem**: AI was looking for "AI Square 1" when it created "Rectangle 1"
+- **Solution**: 
+  - Enhanced `buildCanvasContext` to explicitly list all shape names by type
+  - Updated system prompt to use exact names from canvas
+  - Added synonym understanding (squares = rectangles)
+  - Removed "AI" prefix from created shapes
+
+**Challenge 2: Firestore Sync Timing**
+- **Problem**: Newly created shapes weren't immediately available in local state
+- **Solution**: 
+  - Implemented retry mechanism with increasing delays (500ms, 800ms, 1100ms)
+  - Retrieve shape names after sync by finding highest z-index
+  - Return actual shape names in success message
+
+**Challenge 3: Position Centering**
+- **Problem**: Shapes moved by top-left corner instead of visual center
+- **Solution**: 
+  - Offset coordinates by half width/height when applying preset positions
+  - Account for radius when centering circles
+  - Clamp circles so their edges don't exceed canvas bounds
+
+**Challenge 4: Conversation Memory**
+- **Problem**: AI couldn't understand contextual commands like "move them all"
+- **Solution**: 
+  - Maintain conversation history (last 10 user/AI messages)
+  - Pass history to OpenAI API for context
+  - AI can reference "these shapes", "those circles", etc.
+
+**Challenge 5: Natural Language Understanding**
+- **Problem**: AI misinterpreted "put together" vs "arrange in a line"
+- **Solution**: 
+  - Added explicit "Understanding user intent" section in system prompt
+  - Defined "put together" = same position (stack/overlap)
+  - Defined "arrange in a line" = spread out with spacing
+  - Clarified "horizontally middle" (y=2500) vs "vertically middle" (x=2500)
+
+**Challenge 6: Dynamic Spacing Calculation**
+- **Problem**: Shapes overlapped when arranged in a line
+- **Solution**: 
+  - Calculate spacing based on actual shape dimensions (radius, width)
+  - Use formula: `totalWidth = shapes * (averageSize + spacing)`
+  - Distribute shapes evenly across canvas or specified area
+
+**Challenge 7: Z-Index vs Position Commands**
+- **Problem**: AI was moving shapes when asked to change z-index
+- **Solution**: 
+  - Added explicit "Z-Index / Layering commands" section in system prompt
+  - Instructed AI to use `changeLayer` tool for layering, NOT `moveShape`
+  - Provided examples of size-based layering
+
+---
+
+#### Your Development Approach This Session
+
+**Pattern observed**:
+1. **One-shot implementation**: "Read PRD, read tasks, start building. Let's try one shot it."
+2. **Iterative refinement**: Fixed issues as they appeared in real-time testing
+3. **Natural language testing**: Used conversational commands to test AI understanding
+4. **Visual feedback**: Noticed when shapes weren't positioned correctly
+5. **Memory awareness**: Identified when AI forgot context between commands
+6. **Feature expansion**: Added more tools after seeing core functionality work
+
+**Your testing style**:
+- Tested with real-world commands ("Create 100 circles in line")
+- Tested edge cases (shapes going out of bounds, name mismatches)
+- Tested conversation flow ("move these objects", "align them")
+- Tested complex multi-step operations
+- Compared AI output with expected behavior
+
+**Your debugging style**:
+- Identified specific failures ("Looking for AI Square 1 when Rectangle 1 was created")
+- Requested concrete improvements ("Need to remember actual shape names")
+- Provided clear examples of desired behavior
+- Iterated quickly with feedback ("Perfect!", "Still problem with...")
+
+---
+
+#### Key Learnings
+
+**Technical**:
+1. **OpenAI Function Calling**: Powerful for structured outputs, but requires careful schema design
+2. **Conversation Context**: Maintaining history is crucial for natural interactions
+3. **System Prompts**: Detailed instructions with examples greatly improve AI behavior
+4. **Async State Management**: Must account for Firestore sync delays when querying newly created data
+5. **Shape Name Consistency**: AI must use exact names from canvas, not make up variations
+6. **Natural Language Ambiguity**: Explicit definitions needed for similar-sounding commands
+
+**Process**:
+1. **PRD-First Development**: Having detailed PRD enabled "one-shot" implementation
+2. **Real-time Testing**: Immediate testing revealed issues that specs didn't cover
+3. **Iterative Prompting**: Refining system prompt based on AI mistakes improved accuracy
+4. **User Feedback Loop**: Quick iterations (10-15 fixes) refined the experience
+
+**AI Integration**:
+1. **Tool Design**: 10 focused tools better than 1 mega-tool
+2. **Error Messages**: User-friendly messages crucial for non-technical users
+3. **Rate Limiting**: Prevents abuse and manages API costs
+4. **Debug Mode**: Essential for development and troubleshooting
+
+---
+
+#### Time Investment
+- **Initial implementation**: ~2 hours (core services + UI components)
+- **Refinement iterations**: ~3 hours (15+ fixes for naming, positioning, context)
+- **Feature expansion**: ~2 hours (added 7 more tools beyond initial 3)
+- **Polish & help UI**: ~30 minutes (help panel with command reference)
+- **Total**: ~7.5 hours from concept to production-ready AI agent
+
+---
+
+#### Files Created/Modified (16 total)
+
+**New Files:**
+- `ai-agent/AI-AGENT-PRD.md` - Product Requirements Document
+- `ai-agent/AI-AGENT-TASKS.md` - Implementation task checklist
+- `src/services/ai/openai.ts` - OpenAI integration and tool schemas
+- `src/services/ai/positionParser.ts` - Position parsing utility
+- `src/services/ai/toolExecutor.ts` - Tool execution engine
+- `src/services/ai/rateLimiter.ts` - Rate limiting implementation
+- `src/components/AI/AIPanel.tsx` - Main AI chat panel
+- `src/components/AI/AIInput.tsx` - Input component
+- `src/components/AI/AIMessage.tsx` - Message display component
+- `src/components/AI/AIToast.tsx` - Toast notification component
+- `src/components/AI/AICanvasIntegration.tsx` - Integration layer
+
+**Modified Files:**
+- `package.json` - Added `openai` dependency
+- `src/components/Canvas/Canvas.tsx` - Integrated AI panel
+- `src/components/Canvas/PropertiesPanel.tsx` - Added "Ask AI" button
+- `src/types/index.ts` - Added `zIndex` to `ShapeUpdate` interface
+
+---
+
+#### Success Metrics
+
+**Functionality:**
+- ✅ 10 AI tools working correctly
+- ✅ Conversation memory maintains context
+- ✅ Shape naming and recognition accurate
+- ✅ Position parsing handles all cases
+- ✅ Rate limiting prevents abuse
+- ✅ Error handling provides clear feedback
+
+**User Experience:**
+- ✅ Natural language commands work intuitively
+- ✅ Help panel provides clear guidance
+- ✅ AI responses are helpful and informative
+- ✅ Toast notifications for quick feedback
+- ✅ Keyboard shortcut (Cmd/Ctrl+K) for quick access
+
+**Technical:**
+- ✅ Real-time sync with Firestore
+- ✅ Retry logic handles async state
+- ✅ Debug mode for troubleshooting
+- ✅ TypeScript type safety throughout
+- ✅ Clean separation of concerns (services/components)
+
+---
+
 

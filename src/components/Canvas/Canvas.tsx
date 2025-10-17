@@ -15,7 +15,7 @@ import {
   DEFAULT_SHAPE_FILL,
   DEFAULT_SHAPE_STROKE,
 } from '../../utils/constants';
-import { updateCursorPosition, subscribeToAIActivity, type AIActivityData } from '../../services/presence';
+import { updateCursorPosition } from '../../services/presence';
 import { screenToCanvas, normalizeRectangle, rectanglesIntersect, circleIntersectsRect, lineIntersectsRect } from '../../utils/helpers';
 import { renderGrid } from '../../utils/gridRenderer';
 import { CanvasControls } from './CanvasControls';
@@ -26,7 +26,7 @@ import { PropertiesPanel } from './PropertiesPanel';
 import { LayersPanel } from './LayersPanel';
 import { CursorsLayer } from './CursorsLayer';
 import { FPSCounter } from './FPSCounter';
-import { AIAgent } from '../AI/AIAgent';
+import { AICanvasIntegration } from '../AI/AICanvasIntegration';
 import { useCanvasPanZoom } from '../../hooks/useCanvasPanZoom';
 import { useShapeDrawing } from '../../hooks/useShapeDrawing';
 import { useTextEditing } from '../../hooks/useTextEditing';
@@ -62,13 +62,17 @@ export function Canvas() {
   });
   
   const [showGrid, setShowGrid] = useState(true);
-  const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
-  const [aiNotification, setAiNotification] = useState<AIActivityData | null>(null);
+  const [aiPanelMessage, setAIPanelMessage] = useState<string | undefined>();
   
   // Box selection state
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
   const [selectionRect, setSelectionRect] = useState<SelectionRectType | null>(null);
+
+  // Handle AI panel open (early declaration to maintain hook order)
+  const handleOpenAIPanel = useCallback((message: string) => {
+    setAIPanelMessage(message);
+  }, []);
   
   // Throttling for cursor position updates
   // Supports both RAF (requestAnimationFrame) and time-based throttling
@@ -77,7 +81,7 @@ export function Canvas() {
   const lastCursorUpdateRef = useRef<number>(0);
   const pendingCursorUpdateRef = useRef<{ x: number; y: number } | null>(null);
 
-  const { shapes, selectedIds, selectShape, selectMultipleShapes, addShape, updateShape, deleteShape, reorderShapes, duplicateShapes, loading, currentTool, setCurrentTool, clearLocalUpdates } = useCanvasContext();
+  const { shapes, selectedIds, selectShape, selectMultipleShapes, addShape, updateShape, deleteShape, deleteShapes, reorderShapes, duplicateShapes, loading, currentTool, setCurrentTool, clearLocalUpdates } = useCanvasContext();
   const { currentUser } = useAuth();
 
   const selectedShapes = shapes.filter(s => selectedIds.includes(s.id));
@@ -480,9 +484,9 @@ export function Canvas() {
       if (e.key === 'Delete') {
         if (selectedIds.length > 0) {
           e.preventDefault();
-          // Delete all selected shapes
-          selectedIds.forEach(shapeId => {
-            deleteShape(shapeId);
+          // ⚡ BATCH DELETE - all shapes delete at once!
+          deleteShapes(selectedIds).catch(error => {
+            console.error('Failed to delete shapes:', error);
           });
         }
       }
@@ -506,7 +510,7 @@ export function Canvas() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIds, deleteShape, selectShape, duplicateShapes, setCurrentTool]);
+  }, [selectedIds, deleteShapes, selectShape, duplicateShapes, setCurrentTool]);
 
   const getCursorStyle = useCallback(() => {
     if (isPanning) return 'grabbing';
@@ -545,24 +549,6 @@ export function Canvas() {
     };
   }, [isPanning, getCursorStyle]);
 
-  // Subscribe to AI activity from other users
-  useEffect(() => {
-    if (!currentUser) return;
-
-    const unsubscribe = subscribeToAIActivity(currentUser.uid, (activity) => {
-      // Show notification for other users' AI commands
-      setAiNotification(activity);
-      
-      // Auto-hide after 5 seconds
-      setTimeout(() => {
-        setAiNotification(null);
-      }, 5000);
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, [currentUser]);
 
   // Show loading state while canvas initializes
   if (loading) {
@@ -578,6 +564,9 @@ export function Canvas() {
 
   return (
     <div className="flex h-full w-full">
+      {/* AI Integration */}
+      <AICanvasIntegration initialMessage={aiPanelMessage} />
+      
       {/* Layers Panel */}
       <LayersPanel
         shapes={shapes}
@@ -674,7 +663,6 @@ export function Canvas() {
         <ToolSelector 
           selectedTool={currentTool} 
           onToolChange={setCurrentTool}
-          onAIClick={() => setIsAIPanelOpen(!isAIPanelOpen)}
         />
 
         {/* Canvas Controls */}
@@ -876,38 +864,8 @@ export function Canvas() {
         selectedCount={selectedIds.length}
         onUpdate={handlePropertyUpdate}
         currentUserId={currentUser?.uid}
+        onOpenAIPanel={handleOpenAIPanel}
       />
-
-      {/* AI Agent Panel */}
-      <AIAgent isOpen={isAIPanelOpen} onClose={() => setIsAIPanelOpen(false)} />
-
-      {/* AI Activity Notification */}
-      {aiNotification && (
-        <div className="fixed top-20 right-4 z-50 bg-purple-600 text-white px-4 py-3 rounded-lg shadow-2xl animate-slide-in-right max-w-sm">
-          <div className="flex items-start gap-3">
-            <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
-              />
-            </svg>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm">{aiNotification.userName} used AI</p>
-              <p className="text-xs text-purple-100 mt-1 line-clamp-2">{aiNotification.command}</p>
-            </div>
-            <button
-              onClick={() => setAiNotification(null)}
-              className="flex-shrink-0 hover:bg-purple-500 p-1 rounded transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

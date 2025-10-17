@@ -34,7 +34,36 @@ App
 
 ## Key Design Patterns
 
-### 1. Context Pattern for State Management
+### 1. AI Service Integration Pattern
+**Implementation**: OpenAI function calling with tool executor
+**Files**: `src/services/ai/openai.ts`, `src/services/ai/toolExecutor.ts`, `src/services/ai/positionParser.ts`
+
+**Pattern**:
+- Natural language → OpenAI API → Structured tool calls → Canvas operations
+- Conversation history for context (last 10 messages)
+- Rate limiting to prevent abuse (10 cmd/min, 20 shapes/cmd)
+- Position parsing (preset/exact/relative)
+- Retry logic for Firestore sync timing
+
+**10 AI Tools**:
+1. createShape - Create rectangles, circles, lines, text
+2. moveShape - Move to positions, arrange in lines
+3. deleteShape - Delete single/multiple shapes
+4. resizeShape - Change width/height/radius
+5. rotateShape - Rotate by angle
+6. changeShapeColor - Change fill color
+7. alignShapes - Align along axes
+8. changeLayer - Control z-index
+9. changeShapeStyle - Modify stroke, corners, line caps
+10. getCanvasState - Query canvas information
+
+**Benefits**:
+- Natural language interface for complex operations
+- Batch operations (multiple shapes at once)
+- Contextual understanding ("move them all")
+- User-friendly error messages
+
+### 2. Context Pattern for State Management
 **Implementation**: React Context + useReducer pattern
 **Files**: `src/contexts/AuthContext.tsx`, `src/contexts/CanvasContext.tsx`
 
@@ -122,7 +151,32 @@ const getCanvasCoords = (screenX: number, screenY: number) => {
 
 ## Data Flow Patterns
 
-### 1. Shape Creation Flow
+### 1. AI Command Flow
+```
+User types command → AI Panel → AI Integration → OpenAI API (GPT-4o Mini)
+                                                        ↓
+                                                   Tool calls (JSON)
+                                                        ↓
+                                            Tool Executor → Position Parser
+                                                        ↓
+                                                  Canvas Context
+                                                        ↓
+                                                    Firestore
+                                                        ↓
+                                          Real-time sync to all users
+```
+
+**Key Steps**:
+1. User: "Create 5 blue circles in a row"
+2. AI Integration: Add to conversation history, send to OpenAI
+3. OpenAI: Parse intent → Return 5 `createShape` tool calls
+4. Tool Executor: Execute each tool call sequentially
+5. Position Parser: Calculate positions with spacing
+6. Canvas Context: Create shapes via `addShape`
+7. Firestore: Persist and sync to all users
+8. AI Panel: Display success message with created shape names
+
+### 2. Shape Creation Flow
 ```
 User clicks/drags → Canvas component → CanvasContext → CanvasService → Firestore
                                                                     ↓

@@ -245,6 +245,71 @@ export async function deleteShape(
 }
 
 /**
+ * Delete multiple shapes at once using a batch write
+ * ⚡ ALL SHAPES DELETE SIMULTANEOUSLY for all users (single Firestore transaction)
+ * Only deletes shapes that are not locked by other users
+ */
+export async function deleteShapesBatch(
+  shapeIds: string[],
+  currentUserId: string
+): Promise<void> {
+  if (shapeIds.length === 0) return;
+
+  try {
+    // First, check which shapes can be deleted
+    const shapesToDelete: string[] = [];
+    const checkPromises = shapeIds.map(async (shapeId) => {
+      const shapeRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID, SHAPES_SUBCOLLECTION, shapeId);
+      const shapeSnap = await getDoc(shapeRef);
+      
+      // If shape doesn't exist, skip it
+      if (!shapeSnap.exists()) {
+        console.log(`Shape ${shapeId} already deleted, skipping`);
+        return;
+      }
+      
+      const shape = shapeSnap.data() as Shape;
+      
+      // Check if shape is locked by another user
+      if (
+        shape.isLocked &&
+        shape.lockedBy &&
+        shape.lockedBy !== currentUserId
+      ) {
+        console.warn(`Cannot delete shape ${shapeId} locked by ${shape.lockedByName || 'another user'}`);
+        return;
+      }
+      
+      // Can delete this shape
+      shapesToDelete.push(shapeId);
+    });
+
+    await Promise.all(checkPromises);
+
+    // If no shapes can be deleted, return early
+    if (shapesToDelete.length === 0) {
+      console.log('No shapes to delete (all locked by other users or already deleted)');
+      return;
+    }
+
+    // Delete all valid shapes in a single batch
+    const batch = writeBatch(db);
+    
+    shapesToDelete.forEach((shapeId) => {
+      const shapeRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID, SHAPES_SUBCOLLECTION, shapeId);
+      batch.delete(shapeRef);
+    });
+
+    // ⚡ Single atomic commit - all shapes delete at once!
+    await batch.commit();
+    console.log(`✅ Batch deleted ${shapesToDelete.length} shapes`);
+  } catch (error) {
+    console.error('Failed to batch delete shapes:', error);
+    throw error;
+  }
+}
+
+/**
  * Reorder shapes (for z-index management)
  * NEW: Updates zIndex field for each shape using batch writes
  */
