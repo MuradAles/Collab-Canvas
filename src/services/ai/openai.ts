@@ -6,11 +6,16 @@
 import OpenAI from 'openai';
 import type { Shape } from '../../types';
 
-// OpenAI client for development (production uses server-side /api/ai-command.js)
-const openai = new OpenAI({
-  apiKey: import.meta.env.VITE_OPENAI_API_KEY,
-  dangerouslyAllowBrowser: true, // Required for client-side use
-});
+// OpenAI client for development only (production uses server-side /api/ai-command.js)
+// Only instantiate in development to avoid "Missing credentials" error in production
+let openai: OpenAI | null = null;
+
+if (import.meta.env.DEV && import.meta.env.VITE_OPENAI_API_KEY) {
+  openai = new OpenAI({
+    apiKey: import.meta.env.VITE_OPENAI_API_KEY,
+    dangerouslyAllowBrowser: true, // Required for client-side use
+  });
+}
 
 // ============================================================================
 // Type Definitions
@@ -462,6 +467,9 @@ ${canvasContext}`,
     
     if (import.meta.env.DEV) {
       // Development: Use client-side OpenAI (API key exposed but only locally)
+      if (!openai) {
+        throw new Error('OpenAI client not initialized. Please set VITE_OPENAI_API_KEY in your .env file.');
+      }
       debugInfo.push(`[OpenAI] Using client-side call (development mode)`);
       response = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
