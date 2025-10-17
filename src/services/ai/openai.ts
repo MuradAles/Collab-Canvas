@@ -501,7 +501,7 @@ ${canvasContext}`,
     const message = choice.message;
 
     // Extract tool calls if present
-    const toolCalls: ToolCall[] = message.tool_calls?.map((tc) => {
+    const toolCalls: ToolCall[] = message.tool_calls?.map((tc: any) => {
       if ('function' in tc) {
         return {
           id: tc.id,
@@ -512,7 +512,7 @@ ${canvasContext}`,
         };
       }
       return null;
-    }).filter((tc): tc is ToolCall => tc !== null) || [];
+    }).filter((tc: ToolCall | null): tc is ToolCall => tc !== null) || [];
 
     debugInfo.push(`[OpenAI] Tool calls: ${toolCalls.length}`);
     toolCalls.forEach((tc) => {
