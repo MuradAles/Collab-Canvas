@@ -59,6 +59,8 @@ interface CanvasProps {
 
 export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
   const stageRef = useRef<Konva.Stage | null>(null);
+  // Store Konva node references for direct position updates (bypassing React)
+  const shapeNodesRef = useRef<Map<string, Konva.Node>>(new Map());
   const containerRef = useRef<HTMLDivElement | null>(null);
   
   // Calculate initial size based on viewport - full size since panels are absolute
@@ -84,6 +86,15 @@ export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
   const pendingCursorUpdateRef = useRef<{ x: number; y: number } | null>(null);
 
   const { shapes, selectedIds, selectShape, selectMultipleShapes, addShape, updateShape, updateShapesBatchLocal, deleteShape, deleteShapes, reorderShapes, duplicateShapes, loading, currentTool, setCurrentTool, clearLocalUpdates } = useCanvasContext();
+  
+  // Callback to register Konva nodes for direct updates
+  const registerShapeNode = useCallback((shapeId: string, node: Konva.Node | null) => {
+    if (node) {
+      shapeNodesRef.current.set(shapeId, node);
+    } else {
+      shapeNodesRef.current.delete(shapeId);
+    }
+  }, []);
   const { currentUser } = useAuth();
   const { onlineUsers } = usePresenceContext();
   
@@ -195,6 +206,7 @@ export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
     selectedIds,
     shapes,
     clearLocalUpdates,
+    shapeNodesRef,
   });
 
   /**
@@ -914,6 +926,7 @@ export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
                   isDraggable={currentTool === 'select'}
                   currentUserId={currentUser?.uid}
                   onDoubleClick={shape.type === 'text' ? () => handleTextDoubleClick(shape as TextShape) : undefined}
+                  onNodeRef={registerShapeNode}
                 />
               );
             })}

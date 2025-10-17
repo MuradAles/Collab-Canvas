@@ -112,7 +112,6 @@ export async function updateDragPosition(
       data.y2 = y2;
     }
     
-    console.log(`🔥 [FIREBASE WRITE] Individual Shape Drag - ShapeID: ${shapeId}`);
     await set(dragRef, data);
   } catch (error) {
     console.error('Failed to update drag position:', error);
@@ -150,8 +149,6 @@ export function subscribeToDragPositions(
     const updates = new Map<string, DragPosition>();
     
     if (data) {
-      const shapeIds = Object.keys(data);
-      console.log(`📥 [FIREBASE READ] Individual drag positions - ${shapeIds.length} shape(s)`);
       Object.entries(data).forEach(([shapeId, position]) => {
         updates.set(shapeId, position as DragPosition);
       });
@@ -200,9 +197,7 @@ export async function initializeSelectionDrag(
       timestamp: Date.now(),
     };
     
-    console.log(`🔥 [FIREBASE WRITE] Selection Drag INIT - Shapes: ${shapeIds.length}`, data);
     await set(selectionRef, data);
-    console.log(`✅ [FIREBASE WRITE] Complete`);
   } catch (error) {
     console.error('Failed to initialize selection drag:', error);
     throw error;
@@ -228,7 +223,6 @@ export async function updateSelectionDragDelta(
       timestamp: Date.now(),
     };
     
-    console.log(`🔥 [FIREBASE WRITE] Selection Drag DELTA`, deltaData);
     // CRITICAL: Use update() not set() to merge with existing data
     await update(selectionRef, deltaData);
   } catch (error) {
@@ -246,7 +240,6 @@ export async function clearSelectionDrag(
   const selectionRef = ref(rtdb, `selection-drag/${canvasId}/${userId}`);
   
   try {
-    console.log(`🔥 [FIREBASE WRITE] Selection Drag CLEAR`);
     await remove(selectionRef);
   } catch (error) {
     console.error('Failed to clear selection drag:', error);
@@ -267,7 +260,6 @@ export function subscribeToSelectionDrags(
     const updates = new Map<string, SelectionDrag>();
     
     if (data) {
-      console.log(`📥 [FIREBASE READ] Selection drag update received`, data);
       Object.entries(data).forEach(([userId, selection]) => {
         const selectionData = selection as SelectionDrag;
         updates.set(userId, selectionData);

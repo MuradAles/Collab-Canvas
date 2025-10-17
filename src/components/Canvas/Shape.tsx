@@ -51,6 +51,7 @@ interface ShapeProps {
   isDraggable: boolean;
   currentUserId?: string;
   onDoubleClick?: () => void;
+  onNodeRef?: (shapeId: string, node: Konva.Node | null) => void;
 }
 
 function ShapeComponent({
@@ -66,6 +67,7 @@ function ShapeComponent({
   isDraggable,
   currentUserId,
   onDoubleClick,
+  onNodeRef,
 }: ShapeProps) {
   const shapeRef = useRef<Konva.Rect | Konva.Circle | Konva.Text | null>(null);
 
@@ -91,6 +93,16 @@ function ShapeComponent({
     onTransform,
     shapeRef,
   });
+
+  // Register shape node for direct updates
+  useEffect(() => {
+    if (onNodeRef && shapeRef.current) {
+      onNodeRef(shape.id, shapeRef.current);
+      return () => {
+        onNodeRef(shape.id, null);
+      };
+    }
+  }, [shape.id, onNodeRef]);
 
   // Update shape node rotation when it changes from external sources
   useEffect(() => {

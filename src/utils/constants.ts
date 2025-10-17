@@ -109,7 +109,8 @@ export const MAX_SHAPES = 500; // Performance target for MVP
 // instead of individual shape updates for better performance
 export const MULTI_DRAG_THRESHOLD = 2; // Changed from 10 to 2 - optimize all multi-drags
 
-// Drag update throttle (in milliseconds)
-// All drag updates (individual and selection) throttled to 50ms (20 times per second)
-export const DRAG_THROTTLE_MS = 50;
+// Firebase update throttle (in milliseconds)
+// Throttle Firebase writes to 60 FPS (16.67ms) for efficiency
+// Local Konva updates remain at native RAF speed (60-240 FPS depending on monitor)
+export const FIREBASE_THROTTLE_MS = 16.67; // 60 FPS
 
