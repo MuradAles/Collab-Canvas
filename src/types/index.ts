@@ -186,7 +186,7 @@ export interface CanvasContextType {
   loading: boolean;
   currentTool: Tool;
   selectionRect: SelectionRect | null;
-  addShape: (shape: Omit<Shape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>) => Promise<void>;
+  addShape: (shape: Omit<Shape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>, options?: { skipAutoLock?: boolean }) => Promise<void>;
   updateShape: (id: string, updates: ShapeUpdate, localOnly?: boolean) => Promise<void>;
   deleteShape: (id: string) => Promise<void>;
   deleteShapes: (shapeIds: string[]) => Promise<void>;

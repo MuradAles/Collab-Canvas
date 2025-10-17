@@ -39,7 +39,7 @@ interface UseShapeDrawingProps {
   stageScale: number;
   selectedTool: Tool;
   setSelectedTool: (tool: Tool) => void;
-  addShape: (shape: Omit<RectangleShape | CircleShape | TextShape | LineShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>) => Promise<void>;
+  addShape: (shape: Omit<RectangleShape | CircleShape | TextShape | LineShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>, options?: { skipAutoLock?: boolean }) => Promise<void>;
   onTextCreated?: (shapeId: string) => void;
 }
 
