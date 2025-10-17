@@ -244,6 +244,12 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
         await createShapeInFirestore(newShape);
         // Auto-select the newly created shape (single selection)
         setSelectedIds([newShape.id]);
+        // Lock the newly created shape for the current user
+        await lockShapeInFirestore(
+          newShape.id, 
+          currentUser.uid, 
+          currentUser.displayName || 'Unknown User'
+        );
       } catch (error) {
         console.error('Failed to add shape:', error);
         throw error;
