@@ -203,9 +203,14 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
   /**
    * Adds a new shape to the canvas
    * Syncs to Firestore for real-time collaboration
+   * @param shapeData - Shape data to create
+   * @param options - Optional settings (e.g., skipAutoLock for AI-created shapes)
    */
   const addShape = useCallback(
-    async (shapeData: Omit<Shape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>) => {
+    async (
+      shapeData: Omit<Shape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>,
+      options?: { skipAutoLock?: boolean }
+    ) => {
       if (!currentUser) {
         throw new Error('Must be logged in to create shapes');
       }
@@ -242,14 +247,18 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
 
       try {
         await createShapeInFirestore(newShape);
-        // Auto-select the newly created shape (single selection)
-        setSelectedIds([newShape.id]);
-        // Lock the newly created shape for the current user
-        await lockShapeInFirestore(
-          newShape.id, 
-          currentUser.uid, 
-          currentUser.displayName || 'Unknown User'
-        );
+        
+        // Only auto-select and lock if not skipped (e.g., for AI-created shapes)
+        if (!options?.skipAutoLock) {
+          // Auto-select the newly created shape (single selection)
+          setSelectedIds([newShape.id]);
+          // Lock the newly created shape for the current user
+          await lockShapeInFirestore(
+            newShape.id, 
+            currentUser.uid, 
+            currentUser.displayName || 'Unknown User'
+          );
+        }
       } catch (error) {
         console.error('Failed to add shape:', error);
         throw error;

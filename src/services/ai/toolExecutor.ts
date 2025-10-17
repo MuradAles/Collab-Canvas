@@ -442,7 +442,8 @@ async function executeCreateShape(
     }
 
     // Create shape in Firestore (name will be auto-generated)
-    await canvasContext.addShape(shapeData);
+    // Skip auto-lock and auto-select for AI-created shapes
+    await canvasContext.addShape(shapeData, { skipAutoLock: true });
     
     debugLog.push(`[createShape] Created ${params.type} at (${x}, ${y})`);
     
