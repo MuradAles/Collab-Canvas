@@ -16,7 +16,6 @@ interface PropertiesPanelProps {
   selectedCount: number;
   onUpdate: (updates: Partial<Shape>, localOnly?: boolean) => void;
   currentUserId?: string;
-  onOpenAIPanel?: (message: string) => void;
 }
 
 function PropertiesPanelComponent({
@@ -24,7 +23,6 @@ function PropertiesPanelComponent({
   selectedCount,
   onUpdate,
   currentUserId,
-  onOpenAIPanel,
 }: PropertiesPanelProps) {
   const [hasFill, setHasFill] = useState(true);
   const [hasStroke, setHasStroke] = useState(true);
@@ -166,7 +164,7 @@ function PropertiesPanelComponent({
   // Collapsed state - show a thin tab
   if (isCollapsed) {
     return (
-      <div className="w-12 bg-white border-l border-gray-200 flex flex-col items-center py-4 transition-all duration-300">
+      <div className="w-12 h-full bg-white border-l border-gray-200 flex flex-col items-center py-4 transition-all duration-300 ease-in-out">
         <button
           onClick={() => setIsCollapsed(false)}
           className="p-2 hover:bg-gray-100 rounded transition-colors"
@@ -190,7 +188,7 @@ function PropertiesPanelComponent({
 
   if (!selectedShape) {
     return (
-      <div className="w-64 bg-white border-l border-gray-200 p-4 overflow-y-auto transition-all duration-300">
+      <div className="w-64 h-full bg-white border-l border-gray-200 p-4 overflow-y-auto transition-all duration-300 ease-in-out">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Properties</h3>
           <button
@@ -247,7 +245,7 @@ function PropertiesPanelComponent({
   }
 
   return (
-    <div className="w-64 bg-white border-l border-gray-200 p-4 overflow-y-auto transition-all duration-300">
+    <div className="w-64 h-full bg-white border-l border-gray-200 p-4 overflow-y-auto transition-all duration-300 ease-in-out">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Properties</h3>
         <button
@@ -279,19 +277,6 @@ function PropertiesPanelComponent({
           <div className="text-sm font-medium text-gray-900 capitalize">{selectedShape.type}</div>
         </div>
 
-        {/* AI Assistant Button */}
-        {onOpenAIPanel && (
-          <button
-            onClick={() => onOpenAIPanel(`Move ${selectedShape.name} to `)}
-            className="w-full px-3 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-md hover:from-blue-600 hover:to-purple-700 transition-all text-sm font-medium flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
-            title="Ask AI to help with this shape"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-            </svg>
-            Ask AI
-          </button>
-        )}
 
         {/* Position - Only for non-line shapes */}
         {selectedShape.type !== 'line' && (

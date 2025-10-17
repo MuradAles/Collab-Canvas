@@ -113,10 +113,9 @@ export function AIPanel({
     setMessages([]);
   };
 
-  if (!isOpen) return null;
 
   return (
-    <div className="fixed right-0 top-0 h-screen w-[380px] bg-white border-r border-gray-200 shadow-lg z-50 flex flex-col">
+    <div className={`fixed right-0 top-0 h-screen w-64 bg-white border-l border-gray-200 shadow-lg z-50 flex flex-col transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-blue-500 to-purple-600">
         <div className="flex items-center gap-2">

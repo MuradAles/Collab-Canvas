@@ -14,9 +14,14 @@ export function Tutorial() {
     { key: 'R', description: 'Rectangle Tool' },
     { key: 'C', description: 'Circle Tool' },
     { key: 'T', description: 'Text Tool' },
+    { key: 'L', description: 'Line Tool' },
     { key: 'Shift + Click', description: 'Multi-Select' },
     { key: 'Delete', description: 'Delete Shape' },
+    { key: 'Ctrl+Shift+D', description: 'Duplicate' },
     { key: 'Escape', description: 'Deselect' },
+    { key: '+', description: 'Zoom In' },
+    { key: '-', description: 'Zoom Out' },
+    { key: 'Ctrl + 0', description: 'Reset View' },
     { key: 'Ctrl + Drag', description: 'Pan Canvas' },
     { key: 'Mouse Wheel', description: 'Zoom' },
   ];
@@ -40,9 +45,9 @@ export function Tutorial() {
 
   return (
     <div ref={dropdownRef} className="relative flex flex-col items-end">
-      {/* Tutorial Dropdown - Opens to the left of button */}
+      {/* Tutorial Dropdown - Opens above and to the right of button */}
       {isOpen && (
-        <div className="absolute right-12 top-0 w-64 bg-white bg-opacity-95 rounded-lg shadow-lg border border-gray-200 overflow-hidden animate-in fade-in slide-in-from-right-2 duration-200">
+        <div className="absolute bottom-12 right-0 w-64 bg-white bg-opacity-95 rounded-lg shadow-lg border border-gray-200 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-200">
           {/* Header */}
           <div className="bg-gray-50 px-3 py-2 border-b border-gray-200">
             <h3 className="text-sm font-semibold text-gray-700">Keyboard Shortcuts</h3>

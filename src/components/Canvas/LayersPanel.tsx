@@ -203,16 +203,23 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
   const reversedShapes = [...shapes].reverse();
 
   return (
-    <div className={`bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ${isCollapsed ? 'w-16' : 'w-60'}`}>
+    <div className={`bg-white border-r border-gray-200 flex flex-col h-full transition-all duration-300 ease-in-out ${isCollapsed ? 'w-16' : 'w-60'}`}>
       {/* Header */}
       <div className={`${isCollapsed ? 'px-2' : 'px-4'} py-3 border-b border-gray-200 flex items-center justify-between`}>
         <div className={isCollapsed ? 'hidden' : ''}>
           <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
             Layers
           </h3>
-          <p className="text-xs text-gray-500 mt-1">
-            {shapes.length} {shapes.length === 1 ? 'shape' : 'shapes'}
-          </p>
+          <div className="flex items-center justify-between mt-1">
+            <p className="text-xs text-gray-500 leading-6">
+              {shapes.length} {shapes.length === 1 ? 'shape' : 'shapes'}
+            </p>
+            {selectedIds.length > 0 && (
+              <p className="text-xs font-medium text-green-600 bg-green-50 px-2 rounded leading-6 ml-2">
+                {selectedIds.length} selected
+              </p>
+            )}
+          </div>
         </div>
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
@@ -279,7 +286,7 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
             return (
               <div
                 key={shape.id}
-                className="relative mb-1"
+                className="relative mb-2"
               >
                 {/* Drop indicator line */}
                 {isDragOver && draggedIndex !== null && draggedIndex > index && (
@@ -299,14 +306,14 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
                     transition-all duration-150
                     ${isCollapsed ? 'justify-center' : ''}
                     ${isLockedByOther 
-                      ? 'opacity-50 cursor-not-allowed bg-gray-100 border-2 border-red-200' 
+                      ? 'opacity-50 cursor-not-allowed bg-gray-100 shadow-[0_0_0_2px_rgba(239,68,68,0.3)] shadow-red-500/30' 
                       : 'cursor-pointer'
                     }
                     ${isSelected && isLockedByMe
-                      ? 'bg-green-50 border-2 border-green-500 shadow-sm' 
+                      ? 'bg-green-50 shadow-[0_0_0_2px_rgba(34,197,94,0.5)] shadow-green-500/50' 
                       : isSelected 
-                      ? 'bg-blue-50 border-2 border-blue-500 shadow-sm' 
-                      : !isLockedByOther ? 'bg-gray-50 border-2 border-transparent hover:bg-gray-100 hover:border-gray-200' : ''
+                      ? 'bg-blue-50 shadow-[0_0_0_2px_rgba(59,130,246,0.5)] shadow-blue-500/50' 
+                      : !isLockedByOther ? 'bg-gray-50 hover:bg-gray-100 hover:shadow-sm' : ''
                     }
                     ${isDragging ? 'opacity-40 scale-95' : ''}
                   `}

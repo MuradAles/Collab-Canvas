@@ -15,9 +15,10 @@ import { useAuth } from '../../contexts/AuthContext';
 interface AICanvasIntegrationProps {
   onOpenPanel?: () => void;
   initialMessage?: string;
+  forceOpen?: boolean;
 }
 
-export function AICanvasIntegration({ onOpenPanel, initialMessage }: AICanvasIntegrationProps) {
+export function AICanvasIntegration({ onOpenPanel, initialMessage, forceOpen }: AICanvasIntegrationProps) {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [toastMessages, setToastMessages] = useState<ToastMessage[]>([]);
@@ -30,7 +31,7 @@ export function AICanvasIntegration({ onOpenPanel, initialMessage }: AICanvasInt
   // Handle opening panel with optional initial message
   const handleOpenPanel = useCallback((message?: string) => {
     setIsPanelOpen(true);
-    if (message) {
+    if (message !== undefined) {
       setPanelMessage(message);
     }
     onOpenPanel?.();
@@ -150,25 +151,22 @@ export function AICanvasIntegration({ onOpenPanel, initialMessage }: AICanvasInt
     setToastMessages(prev => prev.filter(t => t.id !== id));
   };
 
+  // Open panel when initialMessage is provided or forceOpen is true
+  useEffect(() => {
+    if (initialMessage !== undefined || forceOpen) {
+      setIsPanelOpen(true);
+    }
+  }, [initialMessage, forceOpen]);
+
   return (
     <>
-      {/* AI Panel Button - Fixed position */}
-      {!isPanelOpen && (
-        <button
-          onClick={() => handleOpenPanel()}
-          className="fixed left-4 top-20 z-40 bg-gradient-to-r from-blue-500 to-purple-600 text-white p-3 rounded-full shadow-lg hover:shadow-xl transition-all hover:scale-110"
-          title="Open AI Assistant (Press /)"
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-          </svg>
-        </button>
-      )}
-
       {/* AI Panel */}
       <AIPanel
         isOpen={isPanelOpen}
-        onClose={() => setIsPanelOpen(false)}
+        onClose={() => {
+          setIsPanelOpen(false);
+          onOpenPanel?.();  // Notify parent that panel is closed
+        }}
         onSendMessage={handleSendMessage}
         isLoading={isLoading}
         initialMessage={panelMessage}

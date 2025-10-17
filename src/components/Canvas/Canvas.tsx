@@ -18,7 +18,6 @@ import {
 import { updateCursorPosition } from '../../services/presence';
 import { screenToCanvas, normalizeRectangle, rectanglesIntersect, circleIntersectsRect, lineIntersectsRect } from '../../utils/helpers';
 import { renderGrid } from '../../utils/gridRenderer';
-import { CanvasControls } from './CanvasControls';
 import { GridToggle } from './GridToggle';
 import { ToolSelector } from './ToolSelector';
 import { Shape } from './Shape';
@@ -54,26 +53,21 @@ export function Canvas() {
   const stageRef = useRef<Konva.Stage | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   
-  // Calculate initial size based on viewport - leaving room for panels and navbar
-  // LayersPanel: 240px (w-60), PropertiesPanel: 256px (w-64), Navbar: 64px
+  // Calculate initial size based on viewport - full size since panels are absolute
   const [stageSize, setStageSize] = useState({ 
-    width: Math.max(800, window.innerWidth - 240 - 256), 
-    height: Math.max(600, window.innerHeight - 64) 
+    width: Math.max(800, window.innerWidth), 
+    height: Math.max(600, window.innerHeight) 
   });
   
   const [showGrid, setShowGrid] = useState(true);
   const [aiPanelMessage, setAIPanelMessage] = useState<string | undefined>();
+  const [aiPanelOpen, setAIPanelOpen] = useState(false);
   
   // Box selection state
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
   const [selectionRect, setSelectionRect] = useState<SelectionRectType | null>(null);
 
-  // Handle AI panel open (early declaration to maintain hook order)
-  const handleOpenAIPanel = useCallback((message: string) => {
-    setAIPanelMessage(message);
-  }, []);
-  
   // Throttling for cursor position updates
   // Supports both RAF (requestAnimationFrame) and time-based throttling
   const cursorRafRef = useRef<number | null>(null);
@@ -506,11 +500,30 @@ export function Canvas() {
       if (e.key === 'Escape') {
         selectShape(null);
       }
+
+      // Zoom shortcuts
+      if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        handleZoomIn();
+        return;
+      }
+      if (e.key === '-') {
+        e.preventDefault();
+        handleZoomOut();
+        return;
+      }
+      
+      // Reset view (Ctrl/Cmd + 0)
+      if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+        e.preventDefault();
+        handleResetView();
+        return;
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIds, deleteShapes, selectShape, duplicateShapes, setCurrentTool]);
+  }, [selectedIds, deleteShapes, selectShape, duplicateShapes, setCurrentTool, handleZoomIn, handleZoomOut, handleResetView]);
 
   const getCursorStyle = useCallback(() => {
     if (isPanning) return 'grabbing';
@@ -563,23 +576,29 @@ export function Canvas() {
   }
 
   return (
-    <div className="flex h-full w-full">
+    <div className="relative h-full w-full">
       {/* AI Integration */}
-      <AICanvasIntegration initialMessage={aiPanelMessage} />
-      
-      {/* Layers Panel */}
-      <LayersPanel
-        shapes={shapes}
-        selectedIds={selectedIds}
-        onSelectShape={selectShape}
-        onReorderShapes={reorderShapes}
-        currentUserId={currentUser?.uid}
+      <AICanvasIntegration 
+        initialMessage={aiPanelMessage} 
+        forceOpen={aiPanelOpen}
+        onOpenPanel={() => setAIPanelOpen(false)}
       />
+      
+      {/* Layers Panel - Absolute positioned, full height */}
+      <div className="absolute left-0 top-0 h-full z-20">
+        <LayersPanel
+          shapes={shapes}
+          selectedIds={selectedIds}
+          onSelectShape={selectShape}
+          onReorderShapes={reorderShapes}
+          currentUserId={currentUser?.uid}
+        />
+      </div>
 
-      {/* Main Canvas Area */}
+      {/* Main Canvas Area - Full width and height */}
       <div
         ref={containerRef}
-        className="flex-1 relative bg-gray-100 overflow-hidden min-w-0"
+        className="w-full h-full relative bg-gray-100 overflow-hidden"
       >
         {/* Text Editing Overlay - positioned within canvas container */}
         {editingTextId && getTextEditPosition() && (
@@ -659,18 +678,15 @@ export function Canvas() {
         {/* Grid Toggle */}
         <GridToggle showGrid={showGrid} onToggle={handleToggleGrid} />
 
-        {/* Tool Selector */}
+
+        {/* Tool Selector - Moved to bottom */}
         <ToolSelector 
           selectedTool={currentTool} 
           onToolChange={setCurrentTool}
-        />
-
-        {/* Canvas Controls */}
-        <CanvasControls
-          onZoomIn={handleZoomIn}
-          onZoomOut={handleZoomOut}
-          onResetView={handleResetView}
-          currentZoom={stageScale}
+          onOpenAIPanel={() => {
+            setAIPanelMessage(undefined);
+            setAIPanelOpen(true);
+          }}
         />
 
         {/* Konva Stage */}
@@ -834,38 +850,17 @@ export function Canvas() {
         {/* FPS Counter */}
         <FPSCounter />
 
-        {/* Canvas info overlay */}
-        <div className="absolute bottom-4 left-4 bg-white bg-opacity-90 px-3 py-2 rounded-lg shadow-lg text-xs text-gray-600">
-          <div className="font-semibold text-gray-700 mb-1">Canvas Info</div>
-          <div>Tool: {currentTool}</div>
-          <div>Zoom: {(stageScale * 100).toFixed(0)}%</div>
-          <div>Shapes: {shapes.length}</div>
-          {selectedIds.length > 0 && (
-            <div className="mt-1 text-blue-600 font-medium">
-              Selected: {selectedIds.length}
-            </div>
-          )}
-          <div className="mt-2 pt-2 border-t border-gray-200 text-gray-500 space-y-1">
-            <div className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs">Shift</kbd>
-              <span>+ Click to Multi-Select</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs">Ctrl+Shift+D</kbd>
-              <span>to Duplicate</span>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {/* Properties Panel */}
-      <PropertiesPanel
-        selectedShape={selectedShape}
-        selectedCount={selectedIds.length}
-        onUpdate={handlePropertyUpdate}
-        currentUserId={currentUser?.uid}
-        onOpenAIPanel={handleOpenAIPanel}
-      />
+      {/* Properties Panel - Absolute positioned, full height */}
+      <div className="absolute right-0 top-0 h-full z-20">
+           <PropertiesPanel
+             selectedShape={selectedShape}
+             selectedCount={selectedIds.length}
+             onUpdate={handlePropertyUpdate}
+             currentUserId={currentUser?.uid}
+           />
+      </div>
+      </div>
     </div>
   );
 }

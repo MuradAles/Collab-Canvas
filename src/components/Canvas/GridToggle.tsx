@@ -10,7 +10,7 @@ interface GridToggleProps {
 
 export function GridToggle({ showGrid, onToggle }: GridToggleProps) {
   return (
-    <div className="absolute top-4 left-4 z-10">
+    <div className="absolute bottom-4 left-4 z-10">
       <button
         onClick={onToggle}
         className={`
