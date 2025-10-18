@@ -5,6 +5,7 @@
 
 import { memo } from 'react';
 import type { TextShape } from '../../../types';
+import { RecentColors } from '../RecentColors';
 
 interface TextPropertiesProps {
   shape: TextShape;
@@ -218,6 +219,16 @@ function TextPropertiesComponent({
         )}
         {!hasFill && <div className="text-xs text-theme-secondary opacity-70 italic">Transparent</div>}
       </div>
+
+      {/* Recent Colors */}
+      {hasFill && (
+        <RecentColors
+          currentColor={localFillColor}
+          onColorSelect={onFillColorChange}
+          onColorBlur={onFillColorBlur}
+          disabled={isLockedByOther}
+        />
+      )}
     </>
   );
 }

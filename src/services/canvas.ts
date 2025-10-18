@@ -162,6 +162,39 @@ export async function createShape(shape: Shape): Promise<void> {
 }
 
 /**
+ * Create multiple shapes at once using a batch write
+ * ⚡ ALL SHAPES CREATE SIMULTANEOUSLY for all users (single Firestore transaction)
+ */
+export async function createShapesBatch(shapes: Shape[]): Promise<void> {
+  if (shapes.length === 0) return;
+
+  try {
+    // Ensure canvas document exists
+    const canvasRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID);
+    const canvasSnap = await getDoc(canvasRef);
+    
+    if (!canvasSnap.exists()) {
+      await initializeCanvas();
+    }
+
+    // Create all shapes in a single batch
+    const batch = writeBatch(db);
+    
+    shapes.forEach((shape) => {
+      const shapeRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID, SHAPES_SUBCOLLECTION, shape.id);
+      batch.set(shapeRef, shape);
+    });
+
+    // ⚡ Single atomic commit - all shapes create at once!
+    await batch.commit();
+    console.log(`✅ Batch created ${shapes.length} shapes`);
+  } catch (error) {
+    console.error('Failed to batch create shapes:', error);
+    throw error;
+  }
+}
+
+/**
  * Update an existing shape
  * NEW: Only updates the specific shape document (HUGE performance improvement!)
  */
@@ -486,18 +519,44 @@ export async function lockShapesBatch(
 /**
  * Unlock multiple shapes at once using a batch write
  * ⚡ ALL SHAPES UNLOCK SIMULTANEOUSLY for all users (single Firestore transaction)
+ * Only unlocks shapes that are locked by the current user
  */
 export async function unlockShapesBatch(
   shapeIds: string[],
-  _userId: string // Kept for consistency with single unlock, but not needed for batch
+  userId: string
 ): Promise<void> {
   if (shapeIds.length === 0) return;
 
   try {
+    // First, fetch all shapes to check ownership
+    const shapesToUnlock: string[] = [];
+    const fetchPromises = shapeIds.map(async (shapeId) => {
+      const shapeRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID, SHAPES_SUBCOLLECTION, shapeId);
+      const shapeSnap = await getDoc(shapeRef);
+      
+      if (!shapeSnap.exists()) {
+        return; // Shape was deleted, skip
+      }
+      
+      const shape = shapeSnap.data() as Shape;
+      
+      // Only unlock if locked by current user or not locked at all
+      if (!shape.lockedBy || shape.lockedBy === userId) {
+        shapesToUnlock.push(shapeId);
+      }
+    });
+    
+    await Promise.all(fetchPromises);
+    
+    // If no shapes to unlock, return early
+    if (shapesToUnlock.length === 0) {
+      return;
+    }
+
     const batch = writeBatch(db);
     const rtdbPromises: Promise<void>[] = [];
 
-    for (const shapeId of shapeIds) {
+    for (const shapeId of shapesToUnlock) {
       clearLockTimeout(shapeId);
       
       const shapeRef = doc(db, CANVAS_COLLECTION, GLOBAL_CANVAS_ID, SHAPES_SUBCOLLECTION, shapeId);

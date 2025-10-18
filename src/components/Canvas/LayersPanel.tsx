@@ -4,7 +4,7 @@
  * Optimized with React.memo to prevent unnecessary re-renders
  */
 
-import { useState, useCallback, memo, useMemo } from 'react';
+import { useState, useCallback, memo, useMemo, useRef, useEffect } from 'react';
 import type { Shape } from '../../types';
 
 interface LayersPanelProps {
@@ -26,6 +26,10 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  
+  // Refs for auto-scroll functionality
+  const layerRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
     setDraggedIndex(index);
@@ -84,6 +88,7 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
     setDraggedIndex(null);
     setDragOverIndex(null);
   }, []);
+
 
 
   const getShapePreview = (shape: Shape) => {
@@ -210,26 +215,64 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
   // Memoize to avoid creating new array on every render
   const reversedShapes = useMemo(() => [...shapes].reverse(), [shapes]);
 
+  // Auto-scroll to selected shape when selection changes
+  useEffect(() => {
+    if (selectedIds.length === 1 && !isCollapsed) {
+      const selectedId = selectedIds[0];
+      const selectedElement = layerRefs.current.get(selectedId);
+      const container = scrollContainerRef.current;
+      
+      if (selectedElement && container) {
+        // Calculate if element is visible
+        const containerRect = container.getBoundingClientRect();
+        const elementRect = selectedElement.getBoundingClientRect();
+        
+        const isVisible = 
+          elementRect.top >= containerRect.top &&
+          elementRect.bottom <= containerRect.bottom;
+        
+        if (!isVisible) {
+          // Scroll to center the element
+          const containerHeight = container.clientHeight;
+          const elementHeight = selectedElement.clientHeight;
+          const elementTop = selectedElement.offsetTop;
+          
+          // Calculate position to center the element
+          const scrollTo = elementTop - (containerHeight / 2) + (elementHeight / 2);
+          
+          container.scrollTo({
+            top: Math.max(0, scrollTo),
+            behavior: 'smooth'
+          });
+        }
+      }
+    }
+  }, [selectedIds, isCollapsed]);
+
   return (
-    <div className={`bg-theme-surface border-r border-theme flex flex-col h-full transition-all duration-300 ease-in-out ${isCollapsed ? 'w-16' : 'w-60'}`}>
+    <div 
+      className={`bg-theme-surface border-r border-theme flex flex-col h-full panel-width-transition ${
+        isCollapsed ? 'panel-width-collapsed' : 'panel-width-expanded'
+      }`}
+    >
       {/* Header */}
-      <div className={`${isCollapsed ? 'px-2' : 'px-4'} py-3 border-b border-theme flex items-center justify-between`}>
-        <div className={isCollapsed ? 'hidden' : ''}>
-          <h3 className="text-sm font-semibold text-theme-primary uppercase tracking-wide">
+      <div className={`${isCollapsed ? 'px-2' : 'px-4'} py-3 border-b border-theme flex items-center justify-between transition-all duration-300 ease-in-out`}>
+        <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-full'}`}>
+          <h3 className="text-sm font-semibold text-theme-primary uppercase tracking-wide whitespace-nowrap">
             Layers
           </h3>
           <div className="flex items-center justify-between mt-1">
             {cullingStats && cullingStats.totalShapes > 0 ? (
-              <p className="text-xs text-theme-secondary leading-6">
+              <p className="text-xs text-theme-secondary leading-6 whitespace-nowrap">
                 <span className="text-blue-600 dark:text-blue-400 font-medium">{cullingStats.visibleShapes}</span> of {cullingStats.totalShapes} {cullingStats.totalShapes === 1 ? 'shape' : 'shapes'}
               </p>
             ) : (
-              <p className="text-xs text-theme-secondary leading-6">
+              <p className="text-xs text-theme-secondary leading-6 whitespace-nowrap">
                 {shapes.length} {shapes.length === 1 ? 'shape' : 'shapes'}
               </p>
             )}
             {selectedIds.length > 0 && (
-              <p className="text-xs font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 rounded leading-6 ml-2">
+              <p className="text-xs font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 rounded leading-6 ml-2 whitespace-nowrap">
                 {selectedIds.length} selected
               </p>
             )}
@@ -237,11 +280,11 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
         </div>
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="p-1 hover:bg-theme-surface-hover rounded transition-colors"
+          className="p-1 hover:bg-theme-surface-hover rounded transition-colors flex-shrink-0"
           title={isCollapsed ? 'Expand panel' : 'Collapse panel'}
         >
           <svg 
-            className={`w-4 h-4 text-theme-secondary transition-transform ${isCollapsed ? 'rotate-180' : ''}`}
+            className={`w-4 h-4 text-theme-secondary transition-transform duration-300 ease-in-out ${isCollapsed ? 'rotate-180' : ''}`}
             fill="none" 
             stroke="currentColor" 
             viewBox="0 0 24 24"
@@ -252,11 +295,11 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
       </div>
 
       {/* Layers List */}
-      <div className="flex-1 overflow-y-auto p-2 scrollbar-thin">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-2 scrollbar-thin transition-all duration-300 ease-in-out">
         {reversedShapes.length === 0 ? (
-          <div className={`text-center text-theme-secondary text-sm mt-8 ${isCollapsed ? 'px-1' : 'px-4'}`}>
+          <div className={`text-center text-theme-secondary text-sm mt-8 transition-all duration-300 ease-in-out ${isCollapsed ? 'px-1' : 'px-4'}`}>
             {!isCollapsed ? (
-              <>
+              <div className="transition-all duration-300 ease-in-out">
                 <svg
                   className="w-12 h-12 mx-auto mb-2 text-theme-secondary opacity-50"
                   fill="none"
@@ -272,21 +315,23 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
                 </svg>
                 <p>No shapes yet</p>
                 <p className="text-xs mt-1">Create shapes to see them here</p>
-              </>
+              </div>
             ) : (
-              <svg
-                className="w-6 h-6 mx-auto text-theme-secondary opacity-50"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
-                />
-              </svg>
+              <div className="transition-all duration-300 ease-in-out">
+                <svg
+                  className="w-6 h-6 mx-auto text-theme-secondary opacity-50"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                  />
+                </svg>
+              </div>
             )}
           </div>
         ) : (
@@ -300,6 +345,13 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
             return (
               <div
                 key={shape.id}
+                ref={(el) => {
+                  if (el) {
+                    layerRefs.current.set(shape.id, el);
+                  } else {
+                    layerRefs.current.delete(shape.id);
+                  }
+                }}
                 className="relative mb-2"
               >
                 {/* Drop indicator line */}
@@ -344,55 +396,51 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
                   `}
                 >
                   {/* Drag Handle */}
-                  {!isCollapsed && (
-                    <div className="text-theme-secondary hover:text-theme-primary cursor-grab active:cursor-grabbing">
-                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-                        <circle cx="9" cy="5" r="1.5" />
-                        <circle cx="9" cy="12" r="1.5" />
-                        <circle cx="9" cy="19" r="1.5" />
-                        <circle cx="15" cy="5" r="1.5" />
-                        <circle cx="15" cy="12" r="1.5" />
-                        <circle cx="15" cy="19" r="1.5" />
-                      </svg>
-                    </div>
-                  )}
+                  <div className={`text-theme-secondary hover:text-theme-primary cursor-grab active:cursor-grabbing transition-all duration-300 ease-in-out overflow-hidden ${isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-full'}`}>
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                      <circle cx="9" cy="5" r="1.5" />
+                      <circle cx="9" cy="12" r="1.5" />
+                      <circle cx="9" cy="19" r="1.5" />
+                      <circle cx="15" cy="5" r="1.5" />
+                      <circle cx="15" cy="12" r="1.5" />
+                      <circle cx="15" cy="19" r="1.5" />
+                    </svg>
+                  </div>
 
                   {/* Shape Preview */}
                   {getShapePreview(shape)}
 
                   {/* Shape Name */}
-                  {!isCollapsed && (
-                    <div className="flex-1 min-w-0">
-                      <div className={`text-sm truncate ${
-                        isSelected && isLockedByMe 
-                          ? 'font-bold text-green-900 dark:text-green-400' 
-                          : isSelected 
-                          ? 'font-bold text-theme-accent' 
-                          : 'font-medium text-theme-primary'
-                      }`}>
-                        {getShapeName(shape)}
-                      </div>
-                      {shape.type === 'rectangle' && (
-                        <div className={`text-xs ${isSelected ? 'text-theme-accent/70' : 'text-theme-secondary'}`}>
-                          {Math.round(shape.width)} × {Math.round(shape.height)}
-                        </div>
-                      )}
-                      {shape.type === 'circle' && (
-                        <div className={`text-xs ${isSelected ? 'text-theme-accent/70' : 'text-theme-secondary'}`}>
-                          r = {Math.round(shape.radius)}
-                        </div>
-                      )}
-                      {shape.type === 'line' && (
-                        <div className={`text-xs ${isSelected ? 'text-theme-accent/70' : 'text-theme-secondary'}`}>
-                          {Math.round(Math.sqrt(Math.pow(shape.x2 - shape.x1, 2) + Math.pow(shape.y2 - shape.y1, 2)))} px
-                        </div>
-                      )}
+                  <div className={`flex-1 min-w-0 transition-all duration-300 ease-in-out overflow-hidden ${isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-full'}`}>
+                    <div className={`text-sm truncate ${
+                      isSelected && isLockedByMe 
+                        ? 'font-bold text-green-900 dark:text-green-400' 
+                        : isSelected 
+                        ? 'font-bold text-theme-accent' 
+                        : 'font-medium text-theme-primary'
+                    }`}>
+                      {getShapeName(shape)}
                     </div>
-                  )}
+                    {shape.type === 'rectangle' && (
+                      <div className={`text-xs ${isSelected ? 'text-theme-accent/70' : 'text-theme-secondary'}`}>
+                        {Math.round(shape.width)} × {Math.round(shape.height)}
+                      </div>
+                    )}
+                    {shape.type === 'circle' && (
+                      <div className={`text-xs ${isSelected ? 'text-theme-accent/70' : 'text-theme-secondary'}`}>
+                        r = {Math.round(shape.radius)}
+                      </div>
+                    )}
+                    {shape.type === 'line' && (
+                      <div className={`text-xs ${isSelected ? 'text-theme-accent/70' : 'text-theme-secondary'}`}>
+                        {Math.round(Math.sqrt(Math.pow(shape.x2 - shape.x1, 2) + Math.pow(shape.y2 - shape.y1, 2)))} px
+                      </div>
+                    )}
+                  </div>
 
                   {/* Lock Indicator - Shows when OTHERS are controlling this object */}
-                  {isLockedByOther && !isCollapsed && (
-                    <div className="flex items-center gap-1 text-red-500 text-xs" title={`Locked by ${shape.lockedByName}`}>
+                  {isLockedByOther && (
+                    <div className={`flex items-center gap-1 text-red-500 text-xs transition-all duration-300 ease-in-out overflow-hidden ${isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-full'}`} title={`Locked by ${shape.lockedByName}`}>
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M12 2C9.243 2 7 4.243 7 7v3H6c-1.103 0-2 .897-2 2v8c0 1.103.897 2 2 2h12c1.103 0 2-.897 2-2v-8c0-1.103-.897-2-2-2h-1V7c0-2.757-2.243-5-5-5zM9 7c0-1.654 1.346-3 3-3s3 1.346 3 3v3H9V7zm4 10.723V20h-2v-2.277c-.595-.347-1-.984-1-1.723 0-1.103.897-2 2-2s2 .897 2 2c0 .738-.404 1.376-1 1.723z" />
                       </svg>
@@ -411,13 +459,11 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
       </div>
 
       {/* Info Footer */}
-      {!isCollapsed && (
-        <div className="px-4 py-2 border-t border-theme bg-theme-surface-hover">
-          <p className="text-xs text-theme-secondary">
-            Drag to reorder • Top = front
-          </p>
-        </div>
-      )}
+      <div className={`px-4 py-2 border-t border-theme bg-theme-surface-hover transition-all duration-300 ease-in-out overflow-hidden ${isCollapsed ? 'opacity-0 max-h-0 py-0' : 'opacity-100 max-h-20'}`}>
+        <p className="text-xs text-theme-secondary whitespace-nowrap">
+          Drag to reorder • Top = front
+        </p>
+      </div>
     </div>
   );
 }

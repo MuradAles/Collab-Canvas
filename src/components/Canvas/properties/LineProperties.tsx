@@ -5,6 +5,7 @@
 
 import { memo } from 'react';
 import type { LineShape } from '../../../types';
+import { RecentColors } from '../RecentColors';
 
 interface LinePropertiesProps {
   shape: LineShape;
@@ -129,6 +130,16 @@ function LinePropertiesComponent({
         )}
         {!hasStroke && <div className="text-xs text-theme-secondary opacity-70 italic">Transparent</div>}
       </div>
+
+      {/* Recent Colors */}
+      {hasStroke && (
+        <RecentColors
+          currentColor={localStrokeColor}
+          onColorSelect={onStrokeColorChange}
+          onColorBlur={onStrokeColorBlur}
+          disabled={isLockedByOther}
+        />
+      )}
 
       {/* Line Width */}
       {hasStroke && (

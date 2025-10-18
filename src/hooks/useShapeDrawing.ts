@@ -39,7 +39,7 @@ interface UseShapeDrawingProps {
   stageScale: number;
   selectedTool: Tool;
   setSelectedTool: (tool: Tool) => void;
-  addShape: (shape: Omit<RectangleShape | CircleShape | TextShape | LineShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>, options?: { skipAutoLock?: boolean }) => Promise<void>;
+  addShape: (shape: Omit<RectangleShape | CircleShape | TextShape | LineShape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>, options?: { skipAutoLock?: boolean }) => Promise<string>;
   onTextCreated?: (shapeId: string) => void;
 }
 
@@ -336,15 +336,15 @@ export function useShapeDrawing({
       };
       
       // Add shape and notify parent to enable editing
-      await addShape(textShape).then(() => {
-        // Notify parent that text was created (so it can start editing)
-        if (onTextCreated) {
-          // Small delay to ensure shape is added to context
-          setTimeout(() => {
-            onTextCreated('_last_created_'); // Signal to get last shape
-          }, 50);
-        }
-      });
+      const shapeId = await addShape(textShape);
+      
+      // Notify parent that text was created (so it can start editing)
+      if (onTextCreated && shapeId) {
+        // Small delay to ensure shape is added to context
+        setTimeout(() => {
+          onTextCreated(shapeId);
+        }, 50);
+      }
       
       setSelectedTool('select'); // Switch back to select tool
     },

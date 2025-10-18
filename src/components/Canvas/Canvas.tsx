@@ -21,6 +21,12 @@ import {
 import { updateCursorPosition } from '../../services/presence';
 import { screenToCanvas, normalizeRectangle, rectanglesIntersect, circleIntersectsRect, lineIntersectsRect } from '../../utils/helpers';
 import { renderGrid } from '../../utils/gridRenderer';
+import {
+  exportCanvasAsPNG as exportCanvasAsPNGUtil,
+  exportCanvasAsSVG as exportCanvasAsSVGUtil,
+  exportSelectedShapesAsPNG,
+  exportSelectedShapesAsSVG,
+} from '../../utils/export';
 import { GridToggle } from './GridToggle';
 import { ToolSelector } from './ToolSelector';
 import { Shape } from './Shape';
@@ -53,11 +59,20 @@ import type { TextShape, ShapeUpdate, SelectionRect as SelectionRectType } from 
  */
 const CURSOR_THROTTLE_MS = 0; // 0 = use RAF (~16ms on 60Hz)
 
-interface CanvasProps {
-  onSetNavigateToUser?: (fn: (userId: string) => void) => void;
+export interface ExportFunctions {
+  exportCanvasAsPNG: () => void;
+  exportCanvasAsSVG: () => void;
+  exportSelectedAsPNG: () => void;
+  exportSelectedAsSVG: () => void;
+  hasSelection: boolean;
 }
 
-export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
+interface CanvasProps {
+  onSetNavigateToUser?: (fn: (userId: string) => void) => void;
+  onSetExportFunctions?: (fns: ExportFunctions) => void;
+}
+
+export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProps = {}) {
   const stageRef = useRef<Konva.Stage | null>(null);
   // Store Konva node references for direct position updates (bypassing React)
   const shapeNodesRef = useRef<Map<string, Konva.Node>>(new Map());
@@ -77,6 +92,12 @@ export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
   const [selectionRect, setSelectionRect] = useState<SelectionRectType | null>(null);
+  
+  // Clipboard for copy/paste
+  const clipboardRef = useRef<typeof shapes>([]);
+  
+  // Track mouse position for paste at cursor
+  const mousePositionRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // Throttling for cursor position updates
   // Supports both RAF (requestAnimationFrame) and time-based throttling
@@ -85,7 +106,7 @@ export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
   const lastCursorUpdateRef = useRef<number>(0);
   const pendingCursorUpdateRef = useRef<{ x: number; y: number } | null>(null);
 
-  const { shapes, selectedIds, selectShape, selectMultipleShapes, addShape, updateShape, updateShapesBatchLocal, deleteShape, deleteShapes, reorderShapes, duplicateShapes, loading, currentTool, setCurrentTool, clearLocalUpdates } = useCanvasContext();
+  const { shapes, selectedIds, selectShape, selectMultipleShapes, addShape, updateShape, deleteShape, deleteShapes, reorderShapes, duplicateShapes, loading, currentTool, setCurrentTool, clearLocalUpdates } = useCanvasContext();
   
   // Callback to register Konva nodes for direct updates
   const registerShapeNode = useCallback((shapeId: string, node: Konva.Node | null) => {
@@ -202,7 +223,6 @@ export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
     currentUserId: currentUser?.uid,
     currentUserName: currentUser?.displayName || 'Unknown User',
     updateShape,
-    updateShapesBatchLocal,
     selectedIds,
     shapes,
     clearLocalUpdates,
@@ -347,8 +367,9 @@ export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
         // Handle text creation (if text tool is active)
         handleTextClick(e);
         
-        // Deselect shapes (unless text tool is active - text creation handles selection)
-        if (currentTool !== 'text') {
+        // Deselect shapes ONLY when using select tool (not when creating shapes)
+        // Shape creation tools (rectangle, circle, line, text) handle their own selection
+        if (currentTool === 'select') {
           selectShape(null);
         }
       }
@@ -580,6 +601,40 @@ export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
   }, [stageSize, stageScale, setStagePosition]);
 
   /**
+   * Export functions
+   */
+  const handleExportCanvasAsPNG = useCallback(() => {
+    if (!stageRef.current) return;
+    exportCanvasAsPNGUtil(stageRef.current, `canvas-${Date.now()}.png`);
+  }, []);
+
+  const handleExportCanvasAsSVG = useCallback(() => {
+    exportCanvasAsSVGUtil(shapes, `canvas-${Date.now()}.svg`);
+  }, [shapes]);
+
+  const handleExportSelectedAsPNG = useCallback(() => {
+    if (!stageRef.current || selectedIds.length === 0) {
+      return; // Silent fail - button should be disabled
+    }
+    try {
+      exportSelectedShapesAsPNG(stageRef.current, selectedIds, `shapes-${Date.now()}.png`);
+    } catch (error) {
+      console.error('Failed to export selected shapes as PNG:', error);
+    }
+  }, [selectedIds]);
+
+  const handleExportSelectedAsSVG = useCallback(() => {
+    if (selectedIds.length === 0) {
+      return; // Silent fail - button should be disabled
+    }
+    try {
+      exportSelectedShapesAsSVG(shapes, selectedIds, `shapes-${Date.now()}.svg`);
+    } catch (error) {
+      console.error('Failed to export selected shapes as SVG:', error);
+    }
+  }, [shapes, selectedIds]);
+
+  /**
    * Expose navigation function to parent via callback
    */
   useEffect(() => {
@@ -589,29 +644,183 @@ export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
   }, [handleNavigateToUser, onSetNavigateToUser]);
 
   /**
+   * Expose export functions to parent via callback
+   */
+  useEffect(() => {
+    if (onSetExportFunctions) {
+      onSetExportFunctions({
+        exportCanvasAsPNG: handleExportCanvasAsPNG,
+        exportCanvasAsSVG: handleExportCanvasAsSVG,
+        exportSelectedAsPNG: handleExportSelectedAsPNG,
+        exportSelectedAsSVG: handleExportSelectedAsSVG,
+        hasSelection: selectedIds.length > 0, // Pass selection state
+      });
+    }
+  }, [
+    onSetExportFunctions,
+    handleExportCanvasAsPNG,
+    handleExportCanvasAsSVG,
+    handleExportSelectedAsPNG,
+    handleExportSelectedAsSVG,
+    selectedIds.length,
+  ]);
+
+  /**
    * Keyboard shortcuts
    */
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Tool shortcuts
-      if (e.key === 'v' || e.key === 'V') {
-        setCurrentTool('select');
+      // Tool shortcuts (only when Ctrl/Cmd is NOT pressed)
+      if (!e.ctrlKey && !e.metaKey) {
+        if (e.key === 'v' || e.key === 'V') {
+          setCurrentTool('select');
+          return;
+        }
+        if (e.key === 'r' || e.key === 'R') {
+          setCurrentTool('rectangle');
+          return;
+        }
+        if (e.key === 'c' || e.key === 'C') {
+          setCurrentTool('circle');
+          return;
+        }
+        if (e.key === 't' || e.key === 'T') {
+          setCurrentTool('text');
+          return;
+        }
+        if (e.key === 'l' || e.key === 'L') {
+          setCurrentTool('line');
+          return;
+        }
+      }
+
+      // Copy (Ctrl+C / Cmd+C)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        if (selectedIds.length > 0 && !(e.target as HTMLElement).isContentEditable) {
+          e.preventDefault();
+          // Copy selected shapes to clipboard
+          const selectedShapes = shapes.filter(s => selectedIds.includes(s.id));
+          
+          // Write to system clipboard as JSON
+          const clipboardData = {
+            type: 'collab-canvas-shapes',
+            shapes: selectedShapes.map(shape => {
+              // Remove internal fields that shouldn't be copied
+              const { id, name, isLocked, lockedBy, lockedByName, ...shapeData } = shape;
+              return shapeData;
+            }),
+            timestamp: Date.now(),
+          };
+          
+          navigator.clipboard.writeText(JSON.stringify(clipboardData))
+            .catch(err => {
+              console.error('Failed to write to clipboard:', err);
+              // Fallback to internal clipboard
+              clipboardRef.current = selectedShapes;
+            });
+        }
         return;
       }
-      if (e.key === 'r' || e.key === 'R') {
-        setCurrentTool('rectangle');
-        return;
-      }
-      if (e.key === 'c' || e.key === 'C') {
-        setCurrentTool('circle');
-        return;
-      }
-      if (e.key === 't' || e.key === 'T') {
-        setCurrentTool('text');
-        return;
-      }
-      if (e.key === 'l' || e.key === 'L') {
-        setCurrentTool('line');
+
+      // Paste (Ctrl+V / Cmd+V)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        if (!(e.target as HTMLElement).isContentEditable) {
+          e.preventDefault();
+          
+          // Read from system clipboard
+          navigator.clipboard.readText()
+            .then(text => {
+              try {
+                const clipboardData = JSON.parse(text);
+                
+                // Verify it's our data format
+                if (clipboardData.type !== 'collab-canvas-shapes' || !Array.isArray(clipboardData.shapes)) {
+                  return;
+                }
+                
+                // Calculate the center of copied shapes
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                
+                clipboardData.shapes.forEach((shapeData: any) => {
+                  if (shapeData.type === 'line') {
+                    minX = Math.min(minX, shapeData.x1, shapeData.x2);
+                    minY = Math.min(minY, shapeData.y1, shapeData.y2);
+                    maxX = Math.max(maxX, shapeData.x1, shapeData.x2);
+                    maxY = Math.max(maxY, shapeData.y1, shapeData.y2);
+                  } else {
+                    const width = shapeData.width || 0;
+                    const height = shapeData.height || 0;
+                    minX = Math.min(minX, shapeData.x);
+                    minY = Math.min(minY, shapeData.y);
+                    maxX = Math.max(maxX, shapeData.x + width);
+                    maxY = Math.max(maxY, shapeData.y + height);
+                  }
+                });
+                
+                const centerX = (minX + maxX) / 2;
+                const centerY = (minY + maxY) / 2;
+                
+                // Calculate offset to paste at cursor position
+                const cursorX = mousePositionRef.current.x;
+                const cursorY = mousePositionRef.current.y;
+                const offsetX = cursorX - centerX;
+                const offsetY = cursorY - centerY;
+                
+                // Create new shapes at cursor position, removing all metadata fields
+                const shapesToCreate = clipboardData.shapes.map((shapeData: any) => {
+                  // Remove all metadata fields that should be regenerated
+                  const { id, name, createdAt, updatedAt, createdBy, isLocked, lockedBy, lockedByName, zIndex, ...cleanData } = shapeData;
+                  
+                  if (cleanData.type === 'line') {
+                    return {
+                      ...cleanData,
+                      x1: cleanData.x1 + offsetX,
+                      y1: cleanData.y1 + offsetY,
+                      x2: cleanData.x2 + offsetX,
+                      y2: cleanData.y2 + offsetY,
+                    };
+                  } else if (cleanData.type === 'text' || cleanData.type === 'circle' || cleanData.type === 'rectangle') {
+                    return {
+                      ...cleanData,
+                      x: cleanData.x + offsetX,
+                      y: cleanData.y + offsetY,
+                    };
+                  }
+                  return cleanData;
+                });
+                
+                if (shapesToCreate.length === 0) {
+                  return;
+                }
+                
+                // Add shapes one by one and collect their IDs
+                const createPromises = shapesToCreate.map((shapeData: any) => {
+                  return addShape(shapeData, { skipAutoLock: true }).catch(error => {
+                    console.error('Failed to create shape:', error);
+                    return null;
+                  });
+                });
+                
+                Promise.all(createPromises).then((newShapeIds) => {
+                  // Filter out any failed creations (null values) and select the newly pasted shapes
+                  const validIds = newShapeIds.filter((id): id is string => id !== null);
+                  
+                  if (validIds.length > 0) {
+                    // Small delay to ensure shapes are rendered before selecting
+                    setTimeout(() => {
+                      selectMultipleShapes(validIds, false);
+                    }, 50);
+                  }
+                });
+              } catch (error) {
+                console.error('Failed to parse clipboard data:', error);
+              }
+            })
+            .catch(err => {
+              console.error('Failed to read clipboard:', err);
+              alert('Failed to read clipboard. Make sure you granted clipboard permissions.');
+            });
+        }
         return;
       }
 
@@ -664,7 +873,7 @@ export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIds, deleteShapes, selectShape, duplicateShapes, setCurrentTool, handleZoomIn, handleZoomOut, handleResetView]);
+  }, [selectedIds, shapes, deleteShapes, selectShape, duplicateShapes, addShape, setCurrentTool, handleZoomIn, handleZoomOut, handleResetView]);
 
   const getCursorStyle = useCallback(() => {
     if (isPanning) return 'grabbing';
@@ -854,7 +1063,18 @@ export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
             handleDrawStart(e);
             handleSelectionStart(e);
           }}
-          onMouseMove={() => {
+          onMouseMove={(e) => {
+            // Track mouse position for paste at cursor
+            const stage = e.target.getStage();
+            if (stage) {
+              const pointerPosition = stage.getPointerPosition();
+              if (pointerPosition) {
+                const transform = stage.getAbsoluteTransform().copy().invert();
+                const canvasPos = transform.point(pointerPosition);
+                mousePositionRef.current = canvasPos;
+              }
+            }
+            
             handlePanMove();
             handleDrawMove();
             handleSelectionMove();
@@ -873,7 +1093,7 @@ export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
           y={stagePosition.y}
           style={{ cursor: getCursorStyle() }}
         >
-          <Layer>
+          <Layer name="main-layer">
             {/* Canvas background - full 100k x 100k canvas (0 to 100,000) */}
             <Rect
               x={CANVAS_BOUNDS.MIN_X}
@@ -1011,6 +1231,145 @@ export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
                 No need for separate indicators since shapes are updated with delta in real-time */}
           </Layer>
         </Stage>
+
+        {/* Floating Z-Index Controls */}
+        {selectedIds.length === 1 && (() => {
+          const selectedShape = shapes.find(s => s.id === selectedIds[0]);
+          if (!selectedShape) return null;
+
+          // Calculate shape bounds
+          let shapeX = 0, shapeY = 0, shapeWidth = 0;
+          
+          if (selectedShape.type === 'line') {
+            const minX = Math.min(selectedShape.x1, selectedShape.x2);
+            const maxX = Math.max(selectedShape.x1, selectedShape.x2);
+            const minY = Math.min(selectedShape.y1, selectedShape.y2);
+            shapeX = minX;
+            shapeY = minY;
+            shapeWidth = maxX - minX;
+          } else {
+            shapeX = selectedShape.x;
+            shapeY = selectedShape.y;
+            if (selectedShape.type === 'circle') {
+              shapeWidth = selectedShape.radius * 2;
+              shapeX -= selectedShape.radius;
+              shapeY -= selectedShape.radius;
+            } else if (selectedShape.type === 'rectangle') {
+              shapeWidth = selectedShape.width;
+            } else if (selectedShape.type === 'text') {
+              shapeWidth = selectedShape.width || 100;
+            }
+          }
+
+          // Convert canvas coordinates to screen coordinates
+          const screenY = shapeY * stageScale + stagePosition.y - 45; // Position above shape
+          const screenCenterX = (shapeX + shapeWidth / 2) * stageScale + stagePosition.x;
+
+          // Get current index
+          const currentIndex = shapes.findIndex(s => s.id === selectedShape.id);
+          const canMoveUp = currentIndex < shapes.length - 1;
+          const canMoveDown = currentIndex > 0;
+
+          const handleMoveUp = () => {
+            if (canMoveUp) {
+              const newShapes = [...shapes];
+              [newShapes[currentIndex], newShapes[currentIndex + 1]] = [newShapes[currentIndex + 1], newShapes[currentIndex]];
+              reorderShapes(newShapes);
+            }
+          };
+
+          const handleMoveDown = () => {
+            if (canMoveDown) {
+              const newShapes = [...shapes];
+              [newShapes[currentIndex], newShapes[currentIndex - 1]] = [newShapes[currentIndex - 1], newShapes[currentIndex]];
+              reorderShapes(newShapes);
+            }
+          };
+
+          const handleBringToFront = () => {
+            const newShapes = shapes.filter(s => s.id !== selectedShape.id);
+            newShapes.push(selectedShape);
+            reorderShapes(newShapes);
+          };
+
+          const handleSendToBack = () => {
+            const newShapes = shapes.filter(s => s.id !== selectedShape.id);
+            newShapes.unshift(selectedShape);
+            reorderShapes(newShapes);
+          };
+
+          return (
+            <div
+              style={{
+                position: 'absolute',
+                left: `${screenCenterX}px`,
+                top: `${screenY}px`,
+                transform: 'translateX(-50%)',
+                zIndex: 1000,
+                pointerEvents: 'auto',
+              }}
+              className="flex items-center gap-1 bg-theme-surface rounded-lg shadow-lg border border-theme p-1"
+            >
+              {/* Bring to Front */}
+              <button
+                onClick={handleBringToFront}
+                disabled={!canMoveUp}
+                className={`p-1.5 rounded hover:bg-theme-surface-hover transition-colors ${
+                  !canMoveUp ? 'opacity-30 cursor-not-allowed' : ''
+                }`}
+                title="Bring to Front"
+              >
+                <svg className="w-4 h-4 text-theme-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 9l7-7 7 7" />
+                </svg>
+              </button>
+
+              {/* Move Up */}
+              <button
+                onClick={handleMoveUp}
+                disabled={!canMoveUp}
+                className={`p-1.5 rounded hover:bg-theme-surface-hover transition-colors ${
+                  !canMoveUp ? 'opacity-30 cursor-not-allowed' : ''
+                }`}
+                title="Move Up"
+              >
+                <svg className="w-4 h-4 text-theme-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                </svg>
+              </button>
+
+              {/* Move Down */}
+              <button
+                onClick={handleMoveDown}
+                disabled={!canMoveDown}
+                className={`p-1.5 rounded hover:bg-theme-surface-hover transition-colors ${
+                  !canMoveDown ? 'opacity-30 cursor-not-allowed' : ''
+                }`}
+                title="Move Down"
+              >
+                <svg className="w-4 h-4 text-theme-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {/* Send to Back */}
+              <button
+                onClick={handleSendToBack}
+                disabled={!canMoveDown}
+                className={`p-1.5 rounded hover:bg-theme-surface-hover transition-colors ${
+                  !canMoveDown ? 'opacity-30 cursor-not-allowed' : ''
+                }`}
+                title="Send to Back"
+              >
+                <svg className="w-4 h-4 text-theme-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 15l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
+          );
+        })()}
 
         {/* FPS Counter */}
         <FPSCounter />

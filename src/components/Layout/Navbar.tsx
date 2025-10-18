@@ -6,18 +6,23 @@
 import { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { usePresenceContext } from '../../contexts/PresenceContext';
+import { useCanvasContext } from '../../contexts/CanvasContext';
 import { SettingsPanel } from './SettingsPanel';
+import type { ExportFunctions } from '../Canvas/Canvas';
 
 interface NavbarProps {
   onNavigateToUser?: ((userId: string) => void) | null;
+  exportFunctions?: ExportFunctions | null;
 }
 
-export function Navbar({ onNavigateToUser }: NavbarProps = {}) {
+export function Navbar({ onNavigateToUser, exportFunctions }: NavbarProps = {}) {
   const { currentUser, logout } = useAuth();
   const { onlineUsers } = usePresenceContext();
+  const { connectionStatus, isReconnecting } = useCanvasContext();
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showOnlineUsersDropdown, setShowOnlineUsersDropdown] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
 
   const handleLogout = async () => {
     try {
@@ -48,6 +53,69 @@ export function Navbar({ onNavigateToUser }: NavbarProps = {}) {
     return colors[index % colors.length];
   };
 
+  // Connection status indicator
+  const getConnectionStatus = () => {
+    if (isReconnecting) {
+      return {
+        text: 'Reconnecting...',
+        color: 'text-yellow-600',
+        bgColor: 'bg-yellow-100 dark:bg-yellow-900/20',
+        icon: (
+          <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        )
+      };
+    }
+    
+    switch (connectionStatus) {
+      case 'connected':
+        return {
+          text: 'Connected',
+          color: 'text-green-600',
+          bgColor: 'bg-green-100 dark:bg-green-900/20',
+          icon: (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          )
+        };
+      case 'disconnected':
+        return {
+          text: 'Disconnected',
+          color: 'text-red-600',
+          bgColor: 'bg-red-100 dark:bg-red-900/20',
+          icon: (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          )
+        };
+      case 'reconnecting':
+        return {
+          text: 'Reconnecting...',
+          color: 'text-yellow-600',
+          bgColor: 'bg-yellow-100 dark:bg-yellow-900/20',
+          icon: (
+            <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          )
+        };
+      default:
+        return {
+          text: 'Unknown',
+          color: 'text-gray-600',
+          bgColor: 'bg-gray-100 dark:bg-gray-900/20',
+          icon: (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          )
+        };
+    }
+  };
+
   return (
     <>
       <nav className="bg-theme-surface border-b border-theme px-6 py-3">
@@ -55,6 +123,130 @@ export function Navbar({ onNavigateToUser }: NavbarProps = {}) {
           <h1 className="text-xl font-bold text-theme-primary">CollabCanvas</h1>
 
           <div className="flex items-center gap-4">
+            {/* Connection Status Indicator */}
+            {(() => {
+              const status = getConnectionStatus();
+              return (
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${status.bgColor} ${status.color} text-sm font-medium`}>
+                  {status.icon}
+                  <span>{status.text}</span>
+                </div>
+              );
+            })()}
+
+            {/* Export Button with Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setShowExportDropdown(!showExportDropdown)}
+                className="p-2 hover:bg-theme-surface-hover rounded-lg transition-colors group"
+                title="Export"
+              >
+                <svg 
+                  className="w-5 h-5 text-theme-secondary group-hover:text-theme-primary transition-colors" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    strokeWidth={2} 
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" 
+                  />
+                </svg>
+              </button>
+
+              {/* Export Dropdown */}
+              {showExportDropdown && exportFunctions && (
+                <>
+                  {/* Backdrop */}
+                  <div 
+                    className="fixed inset-0 z-30" 
+                    onClick={() => setShowExportDropdown(false)}
+                  />
+                  
+                  <div className="absolute top-full right-0 mt-2 w-56 bg-theme-surface rounded-lg shadow-lg border border-theme py-1 z-40">
+                    {/* Canvas Export */}
+                    <div className="px-3 py-2 text-xs font-semibold text-theme-secondary uppercase tracking-wider border-b border-theme">
+                      Export Canvas
+                    </div>
+                    <button
+                      onClick={() => {
+                        exportFunctions.exportCanvasAsPNG();
+                        setShowExportDropdown(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-theme-primary hover:bg-theme-surface-hover flex items-center gap-3"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      As PNG
+                    </button>
+                    <button
+                      onClick={() => {
+                        exportFunctions.exportCanvasAsSVG();
+                        setShowExportDropdown(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-theme-primary hover:bg-theme-surface-hover flex items-center gap-3"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                      </svg>
+                      As SVG
+                    </button>
+
+                    {/* Selected Shapes Export */}
+                    <div className="px-3 py-2 text-xs font-semibold text-theme-secondary uppercase tracking-wider border-t border-b border-theme mt-1">
+                      Export Selected
+                      {!exportFunctions.hasSelection && (
+                        <span className="ml-2 text-xs normal-case text-orange-500 dark:text-orange-400 font-normal">
+                          (select shapes first)
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (exportFunctions.hasSelection) {
+                          exportFunctions.exportSelectedAsPNG();
+                          setShowExportDropdown(false);
+                        }
+                      }}
+                      disabled={!exportFunctions.hasSelection}
+                      className={`w-full text-left px-4 py-2 text-sm flex items-center gap-3 ${
+                        exportFunctions.hasSelection
+                          ? 'text-theme-primary hover:bg-theme-surface-hover cursor-pointer'
+                          : 'text-theme-secondary opacity-50 cursor-not-allowed'
+                      }`}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      Selected as PNG
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (exportFunctions.hasSelection) {
+                          exportFunctions.exportSelectedAsSVG();
+                          setShowExportDropdown(false);
+                        }
+                      }}
+                      disabled={!exportFunctions.hasSelection}
+                      className={`w-full text-left px-4 py-2 text-sm flex items-center gap-3 ${
+                        exportFunctions.hasSelection
+                          ? 'text-theme-primary hover:bg-theme-surface-hover cursor-pointer'
+                          : 'text-theme-secondary opacity-50 cursor-not-allowed'
+                      }`}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                      </svg>
+                      Selected as SVG
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
             {/* Settings Button */}
             <button
               onClick={() => setShowSettings(true)}
