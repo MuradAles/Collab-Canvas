@@ -73,15 +73,14 @@ export function ShapeDropdown({ selectedShape, onShapeChange, onToolActivate, is
         className={`
           relative group px-3 py-2 rounded-l-md transition-all duration-200
           flex items-center justify-center
-          ${isActive ? 'bg-blue-600 text-white' : 'hover:bg-gray-100 text-gray-700'}
+          ${isActive ? 'bg-blue-600 text-white' : 'hover:bg-theme-surface-hover text-theme-primary'}
         `}
-        title={currentShape.label}
       >
         {currentShape.icon}
-        <div className="absolute bottom-full mb-2 left-full ml-2 hidden group-hover:block">
-          <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block">
+          <div className="bg-gray-900 dark:bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap backdrop-blur-sm">
             {currentShape.label}
-            <kbd className="ml-2 px-1 bg-gray-700 rounded text-xs">{currentShape.shortcut}</kbd>
+            <kbd className="ml-2 px-1 bg-gray-700 dark:bg-gray-900 rounded text-xs">{currentShape.shortcut}</kbd>
           </div>
         </div>
       </button>
@@ -91,10 +90,9 @@ export function ShapeDropdown({ selectedShape, onShapeChange, onToolActivate, is
         onClick={() => setIsOpen(!isOpen)}
         className={`
           relative group px-1 py-2 rounded-r-md transition-all duration-200
-          flex items-center justify-center border-l border-gray-300
-          ${isActive ? 'bg-blue-600 text-white border-blue-500' : 'hover:bg-gray-100 text-gray-700'}
+          flex items-center justify-center border-l
+          ${isActive ? 'bg-blue-600 text-white border-blue-500' : 'hover:bg-theme-surface-hover text-theme-primary border-theme'}
         `}
-        title="Change Shape"
       >
         <svg 
           className={`w-3 h-3 transition-transform rotate-180 ${isOpen ? 'rotate-0' : ''}`}
@@ -103,8 +101,8 @@ export function ShapeDropdown({ selectedShape, onShapeChange, onToolActivate, is
         >
           <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
         </svg>
-        <div className="absolute bottom-full mb-2 left-full ml-2 hidden group-hover:block">
-          <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block">
+          <div className="bg-gray-900 dark:bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap backdrop-blur-sm">
             Change Shape
           </div>
         </div>
@@ -112,7 +110,7 @@ export function ShapeDropdown({ selectedShape, onShapeChange, onToolActivate, is
 
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute bottom-full mb-1 left-0 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50 min-w-[140px]">
+        <div className="absolute bottom-full mb-1 left-0 bg-theme-surface rounded-lg shadow-lg border border-theme py-1 z-50 min-w-[140px]">
           {shapes.map((shape) => (
             <button
               key={shape.id}
@@ -123,8 +121,8 @@ export function ShapeDropdown({ selectedShape, onShapeChange, onToolActivate, is
               className={`
                 w-full px-3 py-2 flex items-center gap-2 transition-colors
                 ${selectedShape === shape.id 
-                  ? 'bg-blue-50 text-blue-600' 
-                  : 'hover:bg-gray-50 text-gray-700'
+                  ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' 
+                  : 'hover:bg-theme-surface-hover text-theme-primary'
                 }
               `}
             >

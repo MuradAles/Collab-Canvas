@@ -17,7 +17,7 @@ export interface PositionParameter {
   y?: number;
   relativeTo?: string;
   offset?: number;
-  direction?: 'right' | 'left' | 'top' | 'bottom';
+  direction?: 'right' | 'left' | 'top' | 'bottom' | 'center';
 }
 
 export interface ParsedPosition {
@@ -152,7 +152,7 @@ function parseRelativePosition(
  */
 export function calculateRelativePosition(
   targetShape: Shape,
-  direction: 'right' | 'left' | 'top' | 'bottom',
+  direction: 'right' | 'left' | 'top' | 'bottom' | 'center',
   offset: number,
   newShapeWidth: number = 100,
   newShapeHeight: number = 100
@@ -172,6 +172,8 @@ export function calculateRelativePosition(
         return { x: centerX, y: centerY - offset - newShapeHeight / 2 };
       case 'bottom':
         return { x: centerX, y: centerY + offset + newShapeHeight / 2 };
+      case 'center':
+        return { x: centerX - newShapeWidth / 2, y: centerY - newShapeHeight / 2 };
       default:
         return { x: centerX + offset + newShapeWidth / 2, y: centerY };
     }
@@ -192,6 +194,8 @@ export function calculateRelativePosition(
         return { x: centerX, y: centerY - radius - offset - newShapeHeight / 2 };
       case 'bottom':
         return { x: centerX, y: centerY + radius + offset + newShapeHeight / 2 };
+      case 'center':
+        return { x: centerX - newShapeWidth / 2, y: centerY - newShapeHeight / 2 };
       default:
         return { x: centerX + radius + offset + newShapeWidth / 2, y: centerY };
     }
@@ -213,6 +217,11 @@ export function calculateRelativePosition(
       return { 
         x: targetShape.x + (shapeWidth / 2) - (newShapeWidth / 2), 
         y: targetShape.y + shapeHeight + offset 
+      };
+    case 'center':
+      return {
+        x: targetShape.x + (shapeWidth / 2) - (newShapeWidth / 2),
+        y: targetShape.y + (shapeHeight / 2) - (newShapeHeight / 2),
       };
     default:
       return { x: targetShape.x + shapeWidth + offset, y: targetShape.y };

@@ -23,24 +23,24 @@ export function AIMessage({ message, isDebugMode }: AIMessageProps) {
             isUser
               ? 'bg-blue-500 text-white'
               : isError
-              ? 'bg-red-100 text-red-800 border border-red-300'
-              : 'bg-gray-100 text-gray-800'
+              ? 'bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-400 border border-red-300 dark:border-red-700'
+              : 'bg-theme-surface-hover text-theme-primary'
           }`}
         >
           <p className="text-sm whitespace-pre-wrap">{message.content}</p>
         </div>
 
         {/* Timestamp */}
-        <p className="text-xs text-gray-500 mt-1 px-1">
+        <p className="text-xs text-theme-secondary mt-1 px-1">
           {new Date(message.timestamp).toLocaleTimeString()}
         </p>
 
         {/* Debug info */}
         {!isUser && isDebugMode && message.debugInfo && message.debugInfo.length > 0 && (
-          <div className="mt-2 p-3 bg-gray-800 text-gray-100 rounded-lg text-xs font-mono">
+          <div className="mt-2 p-3 bg-gray-800 dark:bg-gray-900 text-gray-100 dark:text-gray-200 rounded-lg text-xs font-mono">
             <p className="font-semibold text-green-400 mb-2">Debug Info:</p>
             {message.debugInfo.map((info, idx) => (
-              <p key={idx} className="mb-1 text-gray-300">
+              <p key={idx} className="mb-1 text-gray-300 dark:text-gray-400">
                 {info}
               </p>
             ))}
@@ -49,16 +49,16 @@ export function AIMessage({ message, isDebugMode }: AIMessageProps) {
 
         {/* Tool calls (debug mode) */}
         {!isUser && isDebugMode && message.toolCalls && message.toolCalls.length > 0 && (
-          <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs">
-            <p className="font-semibold text-blue-700 mb-2">
+          <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg text-xs">
+            <p className="font-semibold text-blue-700 dark:text-blue-400 mb-2">
               Tool Calls ({message.toolCalls.length}):
             </p>
             {message.toolCalls.map((tc, idx) => (
               <div key={tc.id} className="mb-2 last:mb-0">
-                <p className="font-semibold text-blue-600">
+                <p className="font-semibold text-blue-600 dark:text-blue-400">
                   {idx + 1}. {tc.function.name}
                 </p>
-                <pre className="mt-1 p-2 bg-white rounded text-xs overflow-x-auto">
+                <pre className="mt-1 p-2 bg-theme-surface text-theme-primary rounded text-xs overflow-x-auto">
                   {JSON.stringify(JSON.parse(tc.function.arguments), null, 2)}
                 </pre>
               </div>

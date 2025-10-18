@@ -26,12 +26,16 @@ interface CreateShapeParams {
   position: PositionParameter;
   size?: { width?: number; height?: number };
   color?: string;
+  strokeColor?: string;
+  strokeWidth?: number;
+  cornerRadius?: number;
   text?: string;
   fontSize?: number;
 }
 
 interface MoveShapeParams {
-  shapeName: string;
+  shapeId?: string;
+  shapeName?: string;
   position: PositionParameter;
 }
 
@@ -40,38 +44,45 @@ interface GetCanvasStateParams {
 }
 
 interface DeleteShapeParams {
-  shapeNames: string[];
+  shapeIds?: string[];
+  shapeNames?: string[];
 }
 
 interface ResizeShapeParams {
-  shapeName: string;
+  shapeId?: string;
+  shapeName?: string;
   width?: number;
   height?: number;
   radius?: number;
 }
 
 interface RotateShapeParams {
-  shapeName: string;
+  shapeId?: string;
+  shapeName?: string;
   angle: number;
 }
 
 interface ChangeShapeColorParams {
-  shapeNames: string[];
+  shapeIds?: string[];
+  shapeNames?: string[];
   color: string;
 }
 
 interface AlignShapesParams {
-  shapeNames: string[];
+  shapeIds?: string[];
+  shapeNames?: string[];
   alignment: 'left' | 'right' | 'center-horizontal' | 'top' | 'bottom' | 'center-vertical';
 }
 
 interface ChangeLayerParams {
-  shapeNames: string[];
+  shapeIds?: string[];
+  shapeNames?: string[];
   action: 'bring-to-front' | 'send-to-back' | 'bring-forward' | 'send-backward';
 }
 
 interface ChangeShapeStyleParams {
-  shapeNames: string[];
+  shapeIds?: string[];
+  shapeNames?: string[];
   strokeColor?: string;
   strokeWidth?: number;
   cornerRadius?: number;
@@ -363,6 +374,8 @@ async function executeCreateShape(
 
     const { x, y } = positionResult.position;
     const color = parseColor(params.color);
+    const strokeColor = params.strokeColor ? parseColor(params.strokeColor) : '#000000';
+    const strokeWidth = params.strokeWidth !== undefined ? Math.max(0, Math.min(20, params.strokeWidth)) : 2;
 
     // Build shape data based on type
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -381,9 +394,9 @@ async function executeCreateShape(
           width,
           height,
           fill: color,
-          stroke: '#000000',
-          strokeWidth: 2,
-          cornerRadius: 0,
+          stroke: strokeColor,
+          strokeWidth,
+          cornerRadius: params.cornerRadius !== undefined ? Math.max(0, Math.min(50, params.cornerRadius)) : 0,
         };
         break;
 
@@ -414,7 +427,7 @@ async function executeCreateShape(
           text: params.text || 'Text',
           fontSize: params.fontSize || DEFAULT_TEXT_SIZE,
           fontFamily: 'Arial',
-          fill: '#000000',
+          fill: params.color ? color : '#000000',
         };
         break;
 
@@ -425,8 +438,8 @@ async function executeCreateShape(
           y1: y,
           x2: x + width,
           y2: y,
-          stroke: color,
-          strokeWidth: 2,
+          stroke: params.strokeColor ? strokeColor : color,
+          strokeWidth,
           lineCap: 'round' as const,
           rotation: 0,
           zIndex: shapes.length,
@@ -466,13 +479,13 @@ async function executeMoveShape(
   debugLog: string[]
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // Find the shape by name
-    const shape = shapes.find(s => 
-      s.name.toLowerCase() === params.shapeName.toLowerCase()
-    );
+    // Find the shape by ID (preferred) or name
+    const shape = (params.shapeId
+      ? shapes.find(s => s.id === params.shapeId)
+      : (params.shapeName ? findShapeByName(params.shapeName, shapes) : null));
 
     if (!shape) {
-      const error = `Shape not found: ${params.shapeName}`;
+      const error = `Shape not found`;
       debugLog.push(`[moveShape] ${error}`);
       return { success: false, error };
     }
@@ -613,20 +626,24 @@ async function executeDeleteShape(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const shapeIds: string[] = [];
-    const notFoundShapes: string[] = [];
+    const notFound: string[] = [];
 
-    // Find all shapes by name
-    for (const shapeName of params.shapeNames) {
-      const shape = findShapeByName(shapeName, shapes);
-      if (shape) {
-        shapeIds.push(shape.id);
-      } else {
-        notFoundShapes.push(shapeName);
+    if (params.shapeIds && params.shapeIds.length > 0) {
+      for (const id of params.shapeIds) {
+        const shape = shapes.find(s => s.id === id);
+        if (shape) shapeIds.push(shape.id); else notFound.push(id);
+      }
+    }
+
+    if ((!params.shapeIds || params.shapeIds.length === 0) && params.shapeNames && params.shapeNames.length > 0) {
+      for (const name of params.shapeNames) {
+        const shape = findShapeByName(name, shapes);
+        if (shape) shapeIds.push(shape.id); else notFound.push(name);
       }
     }
 
     if (shapeIds.length === 0) {
-      const error = `Shape(s) not found: ${params.shapeNames.join(', ')}`;
+      const error = `Shape(s) not found`;
       debugLog.push(`[deleteShape] Error: ${error}`);
       return { success: false, error };
     }
@@ -635,8 +652,8 @@ async function executeDeleteShape(
     await canvasContext.deleteShapes(shapeIds);
     
     debugLog.push(`[deleteShape] Deleted ${shapeIds.length} shape(s)`);
-    if (notFoundShapes.length > 0) {
-      debugLog.push(`[deleteShape] Warning: Could not find: ${notFoundShapes.join(', ')}`);
+    if (notFound.length > 0) {
+      debugLog.push(`[deleteShape] Warning: Could not find: ${notFound.join(', ')}`);
     }
 
     return { success: true };
@@ -657,9 +674,11 @@ async function executeResizeShape(
   debugLog: string[]
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const shape = findShapeByName(params.shapeName, shapes);
+    const shape = params.shapeId
+      ? shapes.find(s => s.id === params.shapeId)
+      : (params.shapeName ? findShapeByName(params.shapeName, shapes) : null);
     if (!shape) {
-      const error = `Shape not found: ${params.shapeName}`;
+      const error = `Shape not found`;
       debugLog.push(`[resizeShape] Error: ${error}`);
       return { success: false, error };
     }
@@ -691,7 +710,7 @@ async function executeResizeShape(
 
     await canvasContext.updateShape(shape.id, updates);
     
-    debugLog.push(`[resizeShape] Resized ${params.shapeName}: ${JSON.stringify(updates)}`);
+    debugLog.push(`[resizeShape] Resized ${shape.name}: ${JSON.stringify(updates)}`);
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Failed to resize shape';
@@ -710,9 +729,11 @@ async function executeRotateShape(
   debugLog: string[]
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const shape = findShapeByName(params.shapeName, shapes);
+    const shape = params.shapeId
+      ? shapes.find(s => s.id === params.shapeId)
+      : (params.shapeName ? findShapeByName(params.shapeName, shapes) : null);
     if (!shape) {
-      const error = `Shape not found: ${params.shapeName}`;
+      const error = `Shape not found`;
       debugLog.push(`[rotateShape] Error: ${error}`);
       return { success: false, error };
     }
@@ -728,7 +749,7 @@ async function executeRotateShape(
     
     await canvasContext.updateShape(shape.id, { rotation: normalizedAngle });
     
-    debugLog.push(`[rotateShape] Rotated ${params.shapeName} to ${normalizedAngle}°`);
+    debugLog.push(`[rotateShape] Rotated ${shape.name} to ${normalizedAngle}°`);
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Failed to rotate shape';
@@ -748,21 +769,24 @@ async function executeChangeShapeColor(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const shapeIds: string[] = [];
-    const notFoundShapes: string[] = [];
+    const notFound: string[] = [];
     const color = parseColor(params.color);
 
-    // Find all shapes by name
-    for (const shapeName of params.shapeNames) {
-      const shape = findShapeByName(shapeName, shapes);
-      if (shape) {
-        shapeIds.push(shape.id);
-      } else {
-        notFoundShapes.push(shapeName);
+    if (params.shapeIds && params.shapeIds.length > 0) {
+      for (const id of params.shapeIds) {
+        const shape = shapes.find(s => s.id === id);
+        if (shape) shapeIds.push(shape.id); else notFound.push(id);
+      }
+    }
+    if ((!params.shapeIds || params.shapeIds.length === 0) && params.shapeNames && params.shapeNames.length > 0) {
+      for (const name of params.shapeNames) {
+        const shape = findShapeByName(name, shapes);
+        if (shape) shapeIds.push(shape.id); else notFound.push(name);
       }
     }
 
     if (shapeIds.length === 0) {
-      const error = `Shape(s) not found: ${params.shapeNames.join(', ')}`;
+      const error = `Shape(s) not found`;
       debugLog.push(`[changeShapeColor] Error: ${error}`);
       return { success: false, error };
     }
@@ -773,8 +797,8 @@ async function executeChangeShapeColor(
     }
     
     debugLog.push(`[changeShapeColor] Changed color of ${shapeIds.length} shape(s) to ${color}`);
-    if (notFoundShapes.length > 0) {
-      debugLog.push(`[changeShapeColor] Warning: Could not find: ${notFoundShapes.join(', ')}`);
+    if (notFound.length > 0) {
+      debugLog.push(`[changeShapeColor] Warning: Could not find: ${notFound.join(', ')}`);
     }
 
     return { success: true };
@@ -796,15 +820,18 @@ async function executeAlignShapes(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const targetShapes: Shape[] = [];
-    const notFoundShapes: string[] = [];
+    const notFound: string[] = [];
 
-    // Find all shapes by name
-    for (const shapeName of params.shapeNames) {
-      const shape = findShapeByName(shapeName, shapes);
-      if (shape) {
-        targetShapes.push(shape);
-      } else {
-        notFoundShapes.push(shapeName);
+    if (params.shapeIds && params.shapeIds.length > 0) {
+      for (const id of params.shapeIds) {
+        const shape = shapes.find(s => s.id === id);
+        if (shape) targetShapes.push(shape); else notFound.push(id);
+      }
+    }
+    if ((!params.shapeIds || params.shapeIds.length === 0) && params.shapeNames && params.shapeNames.length > 0) {
+      for (const name of params.shapeNames) {
+        const shape = findShapeByName(name, shapes);
+        if (shape) targetShapes.push(shape); else notFound.push(name);
       }
     }
 
@@ -918,8 +945,8 @@ async function executeAlignShapes(
     }
     
     debugLog.push(`[alignShapes] Aligned ${targetShapes.length} shapes: ${params.alignment}`);
-    if (notFoundShapes.length > 0) {
-      debugLog.push(`[alignShapes] Warning: Could not find: ${notFoundShapes.join(', ')}`);
+    if (notFound.length > 0) {
+      debugLog.push(`[alignShapes] Warning: Could not find: ${notFound.join(', ')}`);
     }
 
     return { success: true };
@@ -941,20 +968,23 @@ async function executeChangeLayer(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const targetShapes: Shape[] = [];
-    const notFoundShapes: string[] = [];
+    const notFound: string[] = [];
 
-    // Find all shapes by name
-    for (const shapeName of params.shapeNames) {
-      const shape = findShapeByName(shapeName, shapes);
-      if (shape) {
-        targetShapes.push(shape);
-      } else {
-        notFoundShapes.push(shapeName);
+    if (params.shapeIds && params.shapeIds.length > 0) {
+      for (const id of params.shapeIds) {
+        const shape = shapes.find(s => s.id === id);
+        if (shape) targetShapes.push(shape); else notFound.push(id);
+      }
+    }
+    if ((!params.shapeIds || params.shapeIds.length === 0) && params.shapeNames && params.shapeNames.length > 0) {
+      for (const name of params.shapeNames) {
+        const shape = findShapeByName(name, shapes);
+        if (shape) targetShapes.push(shape); else notFound.push(name);
       }
     }
 
     if (targetShapes.length === 0) {
-      const error = `Shape(s) not found: ${params.shapeNames.join(', ')}`;
+      const error = `Shape(s) not found`;
       debugLog.push(`[changeLayer] Error: ${error}`);
       return { success: false, error };
     }
@@ -1014,8 +1044,8 @@ async function executeChangeLayer(
         break;
     }
 
-    if (notFoundShapes.length > 0) {
-      debugLog.push(`[changeLayer] Warning: Could not find: ${notFoundShapes.join(', ')}`);
+    if (notFound.length > 0) {
+      debugLog.push(`[changeLayer] Warning: Could not find: ${notFound.join(', ')}`);
     }
 
     return { success: true };
@@ -1037,20 +1067,23 @@ async function executeChangeShapeStyle(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const targetShapes: Shape[] = [];
-    const notFoundShapes: string[] = [];
+    const notFound: string[] = [];
 
-    // Find all shapes by name
-    for (const shapeName of params.shapeNames) {
-      const shape = findShapeByName(shapeName, shapes);
-      if (shape) {
-        targetShapes.push(shape);
-      } else {
-        notFoundShapes.push(shapeName);
+    if (params.shapeIds && params.shapeIds.length > 0) {
+      for (const id of params.shapeIds) {
+        const shape = shapes.find(s => s.id === id);
+        if (shape) targetShapes.push(shape); else notFound.push(id);
+      }
+    }
+    if ((!params.shapeIds || params.shapeIds.length === 0) && params.shapeNames && params.shapeNames.length > 0) {
+      for (const name of params.shapeNames) {
+        const shape = findShapeByName(name, shapes);
+        if (shape) targetShapes.push(shape); else notFound.push(name);
       }
     }
 
     if (targetShapes.length === 0) {
-      const error = `Shape(s) not found: ${params.shapeNames.join(', ')}`;
+      const error = `Shape(s) not found`;
       debugLog.push(`[changeShapeStyle] Error: ${error}`);
       return { success: false, error };
     }
@@ -1114,8 +1147,8 @@ async function executeChangeShapeStyle(
 
     debugLog.push(`[changeShapeStyle] Updated ${updatedCount} shape(s): ${JSON.stringify(updates)}`);
     
-    if (notFoundShapes.length > 0) {
-      debugLog.push(`[changeShapeStyle] Warning: Could not find: ${notFoundShapes.join(', ')}`);
+    if (notFound.length > 0) {
+      debugLog.push(`[changeShapeStyle] Warning: Could not find: ${notFound.join(', ')}`);
     }
 
     return { success: true };

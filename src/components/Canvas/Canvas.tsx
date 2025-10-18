@@ -723,6 +723,16 @@ export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
         initialMessage={aiPanelMessage} 
         forceOpen={aiPanelOpen}
         onOpenPanel={() => setAIPanelOpen(false)}
+        viewportCenter={{
+          x: -stagePosition.x / stageScale + stageSize.width / (2 * stageScale),
+          y: -stagePosition.y / stageScale + stageSize.height / (2 * stageScale),
+        }}
+        viewportBounds={{
+          minX: -stagePosition.x / stageScale,
+          maxX: (-stagePosition.x + stageSize.width) / stageScale,
+          minY: -stagePosition.y / stageScale,
+          maxY: (-stagePosition.y + stageSize.height) / stageScale,
+        }}
       />
       
       {/* Layers Panel - Absolute positioned, full height */}

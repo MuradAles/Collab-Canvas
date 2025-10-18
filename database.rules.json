@@ -45,6 +45,15 @@
         }
       }
     },
+    "users": {
+      "$userId": {
+        "theme": {
+          ".read": "auth != null && auth.uid == $userId",
+          ".write": "auth != null && auth.uid == $userId",
+          ".validate": "(newData.exists() && newData.hasChildren(['mode', 'lightColors', 'darkColors'])) || !newData.exists()"
+        }
+      }
+    },
     // Deny access to any undefined paths
     "$other": {
       ".read": false,

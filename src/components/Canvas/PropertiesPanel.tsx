@@ -164,14 +164,14 @@ function PropertiesPanelComponent({
   // Collapsed state - show a thin tab
   if (isCollapsed) {
     return (
-      <div className="w-12 h-full bg-white border-l border-gray-200 flex flex-col items-center py-4 transition-all duration-300 ease-in-out">
+      <div className="w-12 h-full bg-theme-surface border-l border-theme flex flex-col items-center py-4 transition-all duration-300 ease-in-out">
         <button
           onClick={() => setIsCollapsed(false)}
-          className="p-2 hover:bg-gray-100 rounded transition-colors"
+          className="p-2 hover:bg-theme-surface-hover rounded transition-colors"
           title="Expand properties panel"
         >
           <svg
-            className="w-4 h-4 text-gray-600 rotate-180"
+            className="w-4 h-4 text-theme-secondary rotate-180"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -179,7 +179,7 @@ function PropertiesPanelComponent({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <div className="text-xs text-gray-500 mt-4 [writing-mode:vertical-lr] rotate-180 uppercase tracking-wider">
+        <div className="text-xs text-theme-secondary mt-4 [writing-mode:vertical-lr] rotate-180 uppercase tracking-wider">
           Properties
         </div>
       </div>
@@ -188,20 +188,20 @@ function PropertiesPanelComponent({
 
   if (!selectedShape) {
     return (
-      <div className="w-64 h-full bg-white border-l border-gray-200 p-4 overflow-y-auto transition-all duration-300 ease-in-out">
+      <div className="w-64 h-full bg-theme-surface border-l border-theme p-4 overflow-y-auto transition-all duration-300 ease-in-out">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Properties</h3>
+          <h3 className="text-sm font-semibold text-theme-primary uppercase tracking-wide">Properties</h3>
           <button
             onClick={() => setIsCollapsed(true)}
-            className="p-1 hover:bg-gray-100 rounded transition-colors"
+            className="p-1 hover:bg-theme-surface-hover rounded transition-colors"
             title="Collapse panel"
           >
-            <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-theme-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
         </div>
-        <div className="text-center text-gray-500 text-sm mt-8">
+        <div className="text-center text-theme-secondary text-sm mt-8">
           {selectedCount > 1 ? (
             <>
               <svg
@@ -217,14 +217,14 @@ function PropertiesPanelComponent({
                   d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                 />
               </svg>
-              <p className="font-medium text-blue-600">{selectedCount} shapes selected</p>
-              <p className="text-xs mt-2 text-gray-400">Multi-selection active</p>
-              <p className="text-xs mt-1 text-gray-400">Select a single shape to edit properties</p>
+              <p className="font-medium text-blue-600 dark:text-blue-400">{selectedCount} shapes selected</p>
+              <p className="text-xs mt-2 text-theme-secondary opacity-70">Multi-selection active</p>
+              <p className="text-xs mt-1 text-theme-secondary opacity-70">Select a single shape to edit properties</p>
             </>
           ) : (
             <>
               <svg
-                className="w-12 h-12 mx-auto mb-3 text-gray-400"
+                className="w-12 h-12 mx-auto mb-3 text-theme-secondary opacity-70"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -245,15 +245,15 @@ function PropertiesPanelComponent({
   }
 
   return (
-    <div className="w-64 h-full bg-white border-l border-gray-200 p-4 overflow-y-auto transition-all duration-300 ease-in-out">
+    <div className="w-64 h-full bg-theme-surface border-l border-theme p-4 overflow-y-auto transition-all duration-300 ease-in-out scrollbar-thin">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Properties</h3>
+        <h3 className="text-sm font-semibold text-theme-primary uppercase tracking-wide">Properties</h3>
         <button
           onClick={() => setIsCollapsed(true)}
-          className="p-1 hover:bg-gray-100 rounded transition-colors"
+          className="p-1 hover:bg-theme-surface-hover rounded transition-colors"
           title="Collapse panel"
         >
-          <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 text-theme-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
@@ -272,37 +272,37 @@ function PropertiesPanelComponent({
 
       <div className="space-y-4">
         {/* Shape Type */}
-        <div className="pb-3 border-b border-gray-200">
-          <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Type</div>
-          <div className="text-sm font-medium text-gray-900 capitalize">{selectedShape.type}</div>
+        <div className="pb-3 border-b border-theme">
+          <div className="text-xs text-theme-secondary uppercase tracking-wide mb-1">Type</div>
+          <div className="text-sm font-medium text-theme-primary capitalize">{selectedShape.type}</div>
         </div>
 
 
         {/* Position - Only for non-line shapes */}
         {selectedShape.type !== 'line' && (
           <div>
-            <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Position</div>
+            <div className="text-xs text-theme-secondary uppercase tracking-wide mb-2">Position</div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-xs text-gray-600 mb-1 block">X</label>
+                <label className="text-xs text-theme-primary mb-1 block">X</label>
                 <input
                   type="number"
                   value={Math.round(selectedShape.x)}
                   onChange={(e) => safeUpdate({ x: parseInt(e.target.value) || 0 }, true)}
                   onBlur={(e) => safeUpdate({ x: parseInt(e.target.value) || 0 }, false)}
                   disabled={isLockedByOther}
-                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  className="w-full px-2 py-1 text-sm bg-theme-surface text-theme-primary border border-theme rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-theme-surface-hover disabled:cursor-not-allowed"
                 />
               </div>
               <div>
-                <label className="text-xs text-gray-600 mb-1 block">Y</label>
+                <label className="text-xs text-theme-primary mb-1 block">Y</label>
                 <input
                   type="number"
                   value={Math.round(selectedShape.y)}
                   onChange={(e) => safeUpdate({ y: parseInt(e.target.value) || 0 }, true)}
                   onBlur={(e) => safeUpdate({ y: parseInt(e.target.value) || 0 }, false)}
                   disabled={isLockedByOther}
-                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  className="w-full px-2 py-1 text-sm bg-theme-surface text-theme-primary border border-theme rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-theme-surface-hover disabled:cursor-not-allowed"
                 />
               </div>
             </div>

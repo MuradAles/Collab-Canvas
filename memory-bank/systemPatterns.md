@@ -34,7 +34,34 @@ App
 
 ## Key Design Patterns
 
-### 1. AI Service Integration Pattern
+### 1. Theming Pattern with CSS Variables
+**Implementation**: React Context + CSS Custom Properties
+**Files**: `src/contexts/ThemeContext.tsx`, `src/index.css`, `src/components/Layout/SettingsPanel.tsx`
+
+**Pattern**:
+- ThemeContext manages theme state (mode + colors)
+- CSS variables applied to document root
+- Components use theme utility classes
+- Persistence via localStorage + Firebase sync
+- Real-time updates across all components
+
+**7 Theme Colors**:
+1. Primary - Main UI elements
+2. Accent - Highlights and CTAs
+3. Background - Page background
+4. Surface - Cards, panels
+5. Text - Primary text
+6. Text Secondary - Muted text
+7. Border - Borders and dividers
+
+**Benefits**:
+- Instant theme switching (no re-renders)
+- Browser-native CSS variables (performant)
+- User customization with color pickers
+- Cross-device sync via Firebase
+- Separate light/dark color schemes
+
+### 2. AI Service Integration Pattern
 **Implementation**: OpenAI function calling with tool executor
 **Files**: `src/services/ai/openai.ts`, `src/services/ai/toolExecutor.ts`, `src/services/ai/positionParser.ts`
 
@@ -63,9 +90,9 @@ App
 - Contextual understanding ("move them all")
 - User-friendly error messages
 
-### 2. Context Pattern for State Management
+### 3. Context Pattern for State Management
 **Implementation**: React Context + useReducer pattern
-**Files**: `src/contexts/AuthContext.tsx`, `src/contexts/CanvasContext.tsx`
+**Files**: `src/contexts/AuthContext.tsx`, `src/contexts/CanvasContext.tsx`, `src/contexts/ThemeContext.tsx`
 
 **Pattern**:
 - Centralized state management
@@ -78,7 +105,7 @@ App
 - Centralized state logic
 - Easy testing and debugging
 
-### 2. Service Layer Pattern
+### 4. Service Layer Pattern
 **Implementation**: Separate service files for external dependencies
 **Files**: `src/services/firebase.ts`, `src/services/canvas.ts`, `src/services/auth.ts`
 
@@ -93,7 +120,7 @@ App
 - Reusable across components
 - Easy to swap implementations
 
-### 3. Real-Time Subscription Pattern
+### 5. Real-Time Subscription Pattern
 **Implementation**: Firebase onSnapshot for Firestore, onValue for Realtime DB
 **Files**: `src/contexts/CanvasContext.tsx`, `src/services/canvas.ts`
 
@@ -112,7 +139,7 @@ useEffect(() => {
 - Handles reconnection
 - Clean subscription management
 
-### 4. Object Locking Pattern
+### 6. Object Locking Pattern
 **Implementation**: Lock on drag start, unlock on drag end
 **Files**: `src/services/canvas.ts`, `src/components/Canvas/Shape.tsx`
 
@@ -127,7 +154,7 @@ useEffect(() => {
 - Clear visual feedback
 - Automatic cleanup
 
-### 5. Coordinate Transformation Pattern
+### 7. Coordinate Transformation Pattern
 **Implementation**: Screen coordinates → Canvas coordinates
 **Files**: `src/components/Canvas/Canvas.tsx`
 
@@ -151,7 +178,28 @@ const getCanvasCoords = (screenX: number, screenY: number) => {
 
 ## Data Flow Patterns
 
-### 1. AI Command Flow
+### 1. Theme Change Flow
+```
+User clicks theme toggle → ThemeContext updates mode
+                                      ↓
+                            CSS variables applied to :root
+                                      ↓
+                            Save to localStorage (instant)
+                                      ↓
+                            Save to Firebase (async)
+                                      ↓
+                            All components re-render with new colors
+```
+
+**Key Steps**:
+1. User: Opens settings panel, clicks Light/Dark or changes colors
+2. ThemeContext: Updates mode or colors state
+3. useEffect: Applies CSS variables to document.documentElement
+4. localStorage: Saves theme for instant reload
+5. Firebase: Syncs theme to user's account for cross-device access
+6. Components: Automatically use new theme colors via CSS variables
+
+### 2. AI Command Flow
 ```
 User types command → AI Panel → AI Integration → OpenAI API (GPT-4o Mini)
                                                         ↓
@@ -176,21 +224,21 @@ User types command → AI Panel → AI Integration → OpenAI API (GPT-4o Mini)
 7. Firestore: Persist and sync to all users
 8. AI Panel: Display success message with created shape names
 
-### 2. Shape Creation Flow
+### 3. Shape Creation Flow
 ```
 User clicks/drags → Canvas component → CanvasContext → CanvasService → Firestore
                                                                     ↓
 Other users ← CanvasContext ← Firestore subscription ← Real-time update
 ```
 
-### 2. Real-Time Sync Flow
+### 4. Real-Time Sync Flow
 ```
 User A: Create shape → Firestore
 User B: Firestore subscription → Update local state → Re-render
 User C: Firestore subscription → Update local state → Re-render
 ```
 
-### 3. Object Locking Flow
+### 5. Object Locking Flow
 ```
 User A: Start drag → Lock shape in Firestore → Show lock indicator
 User B: Try to drag → Check lock status → Show "locked by User A" message

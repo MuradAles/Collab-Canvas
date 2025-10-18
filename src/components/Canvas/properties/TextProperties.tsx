@@ -35,21 +35,21 @@ function TextPropertiesComponent({
     <>
       {/* Text Content */}
       <div>
-        <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Text</div>
+        <div className="text-xs text-theme-secondary uppercase tracking-wide mb-2">Text</div>
         <textarea
           value={shape.text}
           onChange={(e) => onUpdate({ text: e.target.value }, true)}
           onBlur={(e) => onUpdate({ text: e.target.value }, false)}
           disabled={isLockedByOther}
           rows={3}
-          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none disabled:bg-gray-100 disabled:cursor-not-allowed"
+          className="w-full px-2 py-1 text-sm bg-theme-surface text-theme-primary border border-theme rounded focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none disabled:bg-theme-surface-hover disabled:cursor-not-allowed"
           placeholder="Enter text..."
         />
       </div>
 
       {/* Font Size */}
       <div>
-        <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Font Size</div>
+        <div className="text-xs text-theme-secondary uppercase tracking-wide mb-2">Font Size</div>
         <div className="flex items-center gap-2">
           <input
             type="range"
@@ -70,7 +70,7 @@ function TextPropertiesComponent({
             onChange={(e) => throttledUpdate({ fontSize: parseInt(e.target.value) || 16 })}
             onBlur={(e) => onUpdate({ fontSize: parseInt(e.target.value) || 16 }, false)}
             disabled={isLockedByOther}
-            className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+            className="w-16 px-2 py-1 text-sm bg-theme-surface text-theme-primary border border-theme rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-theme-surface-hover disabled:cursor-not-allowed"
           />
         </div>
       </div>
@@ -105,7 +105,7 @@ function TextPropertiesComponent({
             safeUpdate({ width: newWidth });
           }}
           disabled={isLockedByOther}
-          className="w-full px-3 py-2 text-sm bg-white text-gray-700 border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="w-full px-3 py-2 text-sm bg-theme-surface text-theme-primary border border-theme rounded hover:bg-theme-surface-hover focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           title="Resize text box to fit content"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -117,7 +117,7 @@ function TextPropertiesComponent({
 
       {/* Text Formatting */}
       <div>
-        <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Formatting</div>
+        <div className="text-xs text-theme-secondary uppercase tracking-wide mb-2">Formatting</div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => {
@@ -134,7 +134,7 @@ function TextPropertiesComponent({
             className={`flex-1 px-3 py-2 text-sm font-bold border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
               (shape.fontStyle || 'normal').includes('bold')
                 ? 'bg-blue-500 text-white border-blue-500'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                : 'bg-theme-surface text-theme-primary border-theme hover:bg-theme-surface-hover'
             } disabled:opacity-50 disabled:cursor-not-allowed`}
             title="Bold"
           >
@@ -155,7 +155,7 @@ function TextPropertiesComponent({
             className={`flex-1 px-3 py-2 text-sm italic border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
               (shape.fontStyle || 'normal').includes('italic')
                 ? 'bg-blue-500 text-white border-blue-500'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                : 'bg-theme-surface text-theme-primary border-theme hover:bg-theme-surface-hover'
             } disabled:opacity-50 disabled:cursor-not-allowed`}
             title="Italic"
           >
@@ -171,7 +171,7 @@ function TextPropertiesComponent({
             className={`flex-1 px-3 py-2 text-sm underline border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${
               shape.textDecoration === 'underline'
                 ? 'bg-blue-500 text-white border-blue-500'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                : 'bg-theme-surface text-theme-primary border-theme hover:bg-theme-surface-hover'
             } disabled:opacity-50 disabled:cursor-not-allowed`}
             title="Underline"
           >
@@ -183,7 +183,7 @@ function TextPropertiesComponent({
       {/* Text Color */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <div className="text-xs text-gray-500 uppercase tracking-wide">Color</div>
+          <div className="text-xs text-theme-secondary uppercase tracking-wide">Color</div>
           <label className="flex items-center gap-1 cursor-pointer">
             <input
               type="checkbox"
@@ -192,7 +192,7 @@ function TextPropertiesComponent({
               disabled={isLockedByOther}
               className="w-3 h-3 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed"
             />
-            <span className="text-xs text-gray-600">Visible</span>
+            <span className="text-xs text-theme-primary">Visible</span>
           </label>
         </div>
         {hasFill && (
@@ -203,7 +203,7 @@ function TextPropertiesComponent({
               onChange={(e) => onFillColorChange(e.target.value)}
               onBlur={onFillColorBlur}
               disabled={isLockedByOther}
-              className="w-12 h-10 rounded border border-gray-300 cursor-pointer disabled:cursor-not-allowed"
+              className="w-12 h-10 rounded border border-theme cursor-pointer disabled:cursor-not-allowed"
             />
             <input
               type="text"
@@ -211,12 +211,12 @@ function TextPropertiesComponent({
               onChange={(e) => onFillColorChange(e.target.value)}
               onBlur={onFillColorBlur}
               disabled={isLockedByOther}
-              className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono uppercase disabled:bg-gray-100 disabled:cursor-not-allowed"
+              className="flex-1 px-2 py-1 text-sm bg-theme-surface text-theme-primary border border-theme rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono uppercase disabled:bg-theme-surface-hover disabled:cursor-not-allowed"
               placeholder="#000000"
             />
           </div>
         )}
-        {!hasFill && <div className="text-xs text-gray-400 italic">Transparent</div>}
+        {!hasFill && <div className="text-xs text-theme-secondary opacity-70 italic">Transparent</div>}
       </div>
     </>
   );

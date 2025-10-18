@@ -211,25 +211,25 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
   const reversedShapes = useMemo(() => [...shapes].reverse(), [shapes]);
 
   return (
-    <div className={`bg-white border-r border-gray-200 flex flex-col h-full transition-all duration-300 ease-in-out ${isCollapsed ? 'w-16' : 'w-60'}`}>
+    <div className={`bg-theme-surface border-r border-theme flex flex-col h-full transition-all duration-300 ease-in-out ${isCollapsed ? 'w-16' : 'w-60'}`}>
       {/* Header */}
-      <div className={`${isCollapsed ? 'px-2' : 'px-4'} py-3 border-b border-gray-200 flex items-center justify-between`}>
+      <div className={`${isCollapsed ? 'px-2' : 'px-4'} py-3 border-b border-theme flex items-center justify-between`}>
         <div className={isCollapsed ? 'hidden' : ''}>
-          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
+          <h3 className="text-sm font-semibold text-theme-primary uppercase tracking-wide">
             Layers
           </h3>
           <div className="flex items-center justify-between mt-1">
             {cullingStats && cullingStats.totalShapes > 0 ? (
-              <p className="text-xs text-gray-500 leading-6">
-                <span className="text-blue-600 font-medium">{cullingStats.visibleShapes}</span> of {cullingStats.totalShapes} {cullingStats.totalShapes === 1 ? 'shape' : 'shapes'}
+              <p className="text-xs text-theme-secondary leading-6">
+                <span className="text-blue-600 dark:text-blue-400 font-medium">{cullingStats.visibleShapes}</span> of {cullingStats.totalShapes} {cullingStats.totalShapes === 1 ? 'shape' : 'shapes'}
               </p>
             ) : (
-              <p className="text-xs text-gray-500 leading-6">
+              <p className="text-xs text-theme-secondary leading-6">
                 {shapes.length} {shapes.length === 1 ? 'shape' : 'shapes'}
               </p>
             )}
             {selectedIds.length > 0 && (
-              <p className="text-xs font-medium text-green-600 bg-green-50 px-2 rounded leading-6 ml-2">
+              <p className="text-xs font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 rounded leading-6 ml-2">
                 {selectedIds.length} selected
               </p>
             )}
@@ -237,11 +237,11 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
         </div>
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="p-1 hover:bg-gray-100 rounded transition-colors"
+          className="p-1 hover:bg-theme-surface-hover rounded transition-colors"
           title={isCollapsed ? 'Expand panel' : 'Collapse panel'}
         >
           <svg 
-            className={`w-4 h-4 text-gray-600 transition-transform ${isCollapsed ? 'rotate-180' : ''}`}
+            className={`w-4 h-4 text-theme-secondary transition-transform ${isCollapsed ? 'rotate-180' : ''}`}
             fill="none" 
             stroke="currentColor" 
             viewBox="0 0 24 24"
@@ -252,13 +252,13 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
       </div>
 
       {/* Layers List */}
-      <div className="flex-1 overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+      <div className="flex-1 overflow-y-auto p-2 scrollbar-thin">
         {reversedShapes.length === 0 ? (
-          <div className={`text-center text-gray-400 text-sm mt-8 ${isCollapsed ? 'px-1' : 'px-4'}`}>
+          <div className={`text-center text-theme-secondary text-sm mt-8 ${isCollapsed ? 'px-1' : 'px-4'}`}>
             {!isCollapsed ? (
               <>
                 <svg
-                  className="w-12 h-12 mx-auto mb-2 text-gray-300"
+                  className="w-12 h-12 mx-auto mb-2 text-theme-secondary opacity-50"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -275,7 +275,7 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
               </>
             ) : (
               <svg
-                className="w-6 h-6 mx-auto text-gray-300"
+                className="w-6 h-6 mx-auto text-theme-secondary opacity-50"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -331,21 +331,21 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
                     transition-all duration-150
                     ${isCollapsed ? 'justify-center' : ''}
                     ${isLockedByOther 
-                      ? 'opacity-50 cursor-not-allowed bg-gray-100 shadow-[0_0_0_2px_rgba(239,68,68,0.3)] shadow-red-500/30' 
+                      ? 'opacity-50 cursor-not-allowed bg-theme-surface-hover shadow-[0_0_0_2px_rgba(239,68,68,0.3)] shadow-red-500/30' 
                       : 'cursor-pointer'
                     }
                     ${isSelected && isLockedByMe
-                      ? 'bg-green-50 shadow-[0_0_0_2px_rgba(34,197,94,0.5)] shadow-green-500/50' 
+                      ? 'bg-green-50 dark:bg-green-900/20 shadow-[inset_0_0_0_2px] shadow-green-500/50' 
                       : isSelected 
-                      ? 'bg-blue-50 shadow-[0_0_0_2px_rgba(59,130,246,0.5)] shadow-blue-500/50' 
-                      : !isLockedByOther ? 'bg-gray-50 hover:bg-gray-100 hover:shadow-sm' : ''
+                      ? 'bg-theme-accent/10 shadow-[inset_0_0_0_2px] shadow-theme-accent' 
+                      : !isLockedByOther ? 'bg-theme-surface-hover hover:opacity-80 hover:shadow-sm' : ''
                     }
                     ${isDragging ? 'opacity-40 scale-95' : ''}
                   `}
                 >
                   {/* Drag Handle */}
                   {!isCollapsed && (
-                    <div className="text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing">
+                    <div className="text-theme-secondary hover:text-theme-primary cursor-grab active:cursor-grabbing">
                       <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                         <circle cx="9" cy="5" r="1.5" />
                         <circle cx="9" cy="12" r="1.5" />
@@ -365,25 +365,25 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
                     <div className="flex-1 min-w-0">
                       <div className={`text-sm truncate ${
                         isSelected && isLockedByMe 
-                          ? 'font-medium text-green-900' 
+                          ? 'font-bold text-green-900 dark:text-green-400' 
                           : isSelected 
-                          ? 'font-medium text-blue-900' 
-                          : 'text-gray-700'
+                          ? 'font-bold text-theme-accent' 
+                          : 'font-medium text-theme-primary'
                       }`}>
                         {getShapeName(shape)}
                       </div>
                       {shape.type === 'rectangle' && (
-                        <div className="text-xs text-gray-500">
+                        <div className={`text-xs ${isSelected ? 'text-theme-accent/70' : 'text-theme-secondary'}`}>
                           {Math.round(shape.width)} × {Math.round(shape.height)}
                         </div>
                       )}
                       {shape.type === 'circle' && (
-                        <div className="text-xs text-gray-500">
+                        <div className={`text-xs ${isSelected ? 'text-theme-accent/70' : 'text-theme-secondary'}`}>
                           r = {Math.round(shape.radius)}
                         </div>
                       )}
                       {shape.type === 'line' && (
-                        <div className="text-xs text-gray-500">
+                        <div className={`text-xs ${isSelected ? 'text-theme-accent/70' : 'text-theme-secondary'}`}>
                           {Math.round(Math.sqrt(Math.pow(shape.x2 - shape.x1, 2) + Math.pow(shape.y2 - shape.y1, 2)))} px
                         </div>
                       )}
@@ -412,8 +412,8 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
 
       {/* Info Footer */}
       {!isCollapsed && (
-        <div className="px-4 py-2 border-t border-gray-200 bg-gray-50">
-          <p className="text-xs text-gray-500">
+        <div className="px-4 py-2 border-t border-theme bg-theme-surface-hover">
+          <p className="text-xs text-theme-secondary">
             Drag to reorder • Top = front
           </p>
         </div>

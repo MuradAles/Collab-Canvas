@@ -1,6 +1,129 @@
 @import "tailwindcss";
 
-/* Custom scrollbar styles for layers panel */
+/* ============================================================================
+ * CSS Variables for Theming
+ * ============================================================================ */
+
+:root {
+  /* Default Light Theme Colors */
+  --color-primary: #2563eb;
+  --color-accent: #8b5cf6;
+  --color-background: #f9fafb;
+  --color-surface: #ffffff;
+  --color-text: #111827;
+  --color-text-secondary: #6b7280;
+  --color-border: #e5e7eb;
+  
+  /* RGB values for opacity support */
+  --color-accent-rgb: 139, 92, 246;
+  
+  /* Derived Colors */
+  --color-primary-hover: #1d4ed8;
+  --color-accent-hover: #7c3aed;
+  --color-surface-hover: #f3f4f6;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+}
+
+[data-theme="dark"] {
+  /* Dark Theme Colors */
+  --color-primary: #3b82f6;
+  --color-accent: #a78bfa;
+  --color-background: #111827;
+  --color-surface: #1f2937;
+  --color-text: #f9fafb;
+  --color-text-secondary: #9ca3af;
+  --color-border: #374151;
+  
+  /* RGB values for opacity support */
+  --color-accent-rgb: 167, 139, 250;
+  
+  /* Derived Colors */
+  --color-primary-hover: #60a5fa;
+  --color-accent-hover: #c4b5fd;
+  --color-surface-hover: #374151;
+  
+  /* Shadows (more subtle in dark mode) */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5);
+}
+
+/* ============================================================================
+ * Theme Utility Classes
+ * ============================================================================ */
+
+.bg-theme-background {
+  background-color: var(--color-background);
+}
+
+.bg-theme-surface {
+  background-color: var(--color-surface);
+}
+
+.bg-theme-primary {
+  background-color: var(--color-primary);
+}
+
+.bg-theme-accent {
+  background-color: var(--color-accent);
+}
+
+.text-theme-primary {
+  color: var(--color-text);
+}
+
+.text-theme-secondary {
+  color: var(--color-text-secondary);
+}
+
+.text-theme-accent {
+  color: var(--color-accent);
+}
+
+.border-theme {
+  border-color: var(--color-border);
+}
+
+.border-theme-accent {
+  border-color: var(--color-accent);
+}
+
+.hover\:bg-theme-surface-hover:hover {
+  background-color: var(--color-surface-hover);
+}
+
+.hover\:bg-theme-primary-hover:hover {
+  background-color: var(--color-primary-hover);
+}
+
+.bg-theme-accent\/10 {
+  background-color: rgba(var(--color-accent-rgb), 0.1);
+}
+
+.text-theme-accent\/70 {
+  color: rgba(var(--color-accent-rgb), 0.7);
+}
+
+.shadow-theme-accent {
+  box-shadow: inset 0 0 0 2px var(--color-accent);
+}
+
+.shadow-theme-accent\/30 {
+  box-shadow: 0 0 0 2px rgba(var(--color-accent-rgb), 0.3);
+}
+
+.border-theme-accent\/20 {
+  border-color: rgba(var(--color-accent-rgb), 0.2);
+}
+
+/* ============================================================================
+ * Custom Scrollbar Styles
+ * ============================================================================ */
+
 .scrollbar-thin {
   scrollbar-width: thin;
 }
@@ -10,15 +133,25 @@
 }
 
 .scrollbar-thin::-webkit-scrollbar-track {
-  background: #f3f4f6;
+  background: var(--color-surface-hover);
   border-radius: 3px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: var(--color-border);
   border-radius: 3px;
 }
 
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: var(--color-text-secondary);
+}
+
+/* ============================================================================
+ * Smooth Transitions
+ * ============================================================================ */
+
+* {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
 }
