@@ -5,7 +5,7 @@
 
 import type { Shape, CanvasContextType } from '../../../types';
 import type { CreateShapeParams } from '../types/toolTypes';
-import { parsePosition } from '../positionParser';
+import { parsePosition, type PositionViewportInfo } from '../positionParser';
 import { parseColor } from '../utils/colorParser';
 import { DEFAULT_SHAPE_WIDTH, DEFAULT_SHAPE_HEIGHT, DEFAULT_TEXT_SIZE, CANVAS_BOUNDS } from '../../../utils/constants';
 
@@ -16,14 +16,22 @@ export async function executeCreateShape(
   params: CreateShapeParams,
   canvasContext: CanvasContextType,
   shapes: Shape[],
-  debugLog: string[]
+  debugLog: string[],
+  viewport?: PositionViewportInfo
 ): Promise<{ shapeId: string | null; error?: string }> {
   try {
     // Parse position
     const width = params.size?.width || DEFAULT_SHAPE_WIDTH;
     const height = params.size?.height || DEFAULT_SHAPE_HEIGHT;
     
-    const positionResult = parsePosition(params.position, shapes, width, height);
+    const positionResult = parsePosition(
+      params.position,
+      shapes,
+      width,
+      height,
+      viewport,
+      { forceWithinViewport: true, defaultToViewportCenter: true }
+    );
     
     if (!positionResult.position) {
       const error = positionResult.error || 'Invalid position';

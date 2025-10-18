@@ -34,7 +34,9 @@ import { PropertiesPanel } from './PropertiesPanel';
 import { LayersPanel } from './LayersPanel';
 import { CursorsLayer } from './CursorsLayer';
 import { FPSCounter } from './FPSCounter';
+import { Tutorial } from './Tutorial';
 import { AICanvasIntegration } from '../AI/AICanvasIntegration';
+import { AICommandsModal } from '../AI/AICommandsModal';
 import { useCanvasPanZoom } from '../../hooks/useCanvasPanZoom';
 import { useShapeDrawing } from '../../hooks/useShapeDrawing';
 import { useTextEditing } from '../../hooks/useTextEditing';
@@ -87,6 +89,9 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
   const [showGrid, setShowGrid] = useState(true);
   const [aiPanelMessage, setAIPanelMessage] = useState<string | undefined>();
   const [aiPanelOpen, setAIPanelOpen] = useState(false);
+  const [aiChatExpanded, setAIChatExpanded] = useState(false);
+  const [aiDebugMode, setAIDebugMode] = useState(false);
+  const [aiCommandsModalOpen, setAICommandsModalOpen] = useState(false);
   
   // Box selection state
   const [isSelecting, setIsSelecting] = useState(false);
@@ -952,6 +957,10 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
           minY: -stagePosition.y / stageScale,
           maxY: (-stagePosition.y + stageSize.height) / stageScale,
         }}
+        isChatExpanded={aiChatExpanded}
+        isDebugMode={aiDebugMode}
+        onChatExpandedChange={setAIChatExpanded}
+        onDebugModeChange={setAIDebugMode}
       />
       
       {/* Layers Panel - Absolute positioned, full height */}
@@ -1057,8 +1066,18 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
           onToolChange={setCurrentTool}
           onOpenAIPanel={() => {
             setAIPanelMessage(undefined);
-            setAIPanelOpen(true);
+            setAIPanelOpen(!aiPanelOpen);
           }}
+          isAIPanelOpen={aiPanelOpen}
+          isChatExpanded={aiChatExpanded}
+          onToggleChatExpanded={() => setAIChatExpanded(!aiChatExpanded)}
+          onShowAICommands={() => setAICommandsModalOpen(true)}
+        />
+
+        {/* AI Commands Modal */}
+        <AICommandsModal 
+          isOpen={aiCommandsModalOpen}
+          onClose={() => setAICommandsModalOpen(false)}
         />
 
         {/* Konva Stage */}
@@ -1403,6 +1422,10 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
         {/* FPS Counter */}
         <FPSCounter />
 
+      {/* Tutorial Button - Right Bottom Corner */}
+      <div className="fixed right-4 bottom-4 z-[100]">
+        <Tutorial />
+      </div>
 
       {/* Properties Panel - Absolute positioned, full height */}
       <div className="absolute right-0 top-0 h-full z-20">

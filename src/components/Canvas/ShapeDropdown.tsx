@@ -71,13 +71,13 @@ export function ShapeDropdown({ selectedShape, onShapeChange, onToolActivate, is
       <button
         onClick={() => onToolActivate(selectedShape)}
         className={`
-          relative group px-3 py-2 rounded-l-md transition-all duration-200
+          relative group w-9 h-11 rounded-l-md transition-all duration-200
           flex items-center justify-center
           ${isActive ? 'bg-blue-600 text-white' : 'hover:bg-theme-surface-hover text-theme-primary'}
         `}
       >
         {currentShape.icon}
-        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block">
+        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-50">
           <div className="bg-gray-900 dark:bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap backdrop-blur-sm">
             {currentShape.label}
             <kbd className="ml-2 px-1 bg-gray-700 dark:bg-gray-900 rounded text-xs">{currentShape.shortcut}</kbd>
@@ -89,7 +89,7 @@ export function ShapeDropdown({ selectedShape, onShapeChange, onToolActivate, is
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={`
-          relative group px-1 py-2 rounded-r-md transition-all duration-200
+          relative group w-5 h-11 rounded-r-md transition-all duration-200
           flex items-center justify-center border-l
           ${isActive ? 'bg-blue-600 text-white border-blue-500' : 'hover:bg-theme-surface-hover text-theme-primary border-theme'}
         `}

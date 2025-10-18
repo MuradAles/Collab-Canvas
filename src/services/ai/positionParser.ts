@@ -30,6 +30,11 @@ export interface PositionParseResult {
   error?: string;
 }
 
+export interface PositionViewportInfo {
+  center: { x: number; y: number };
+  bounds: { minX: number; maxX: number; minY: number; maxY: number };
+}
+
 // ============================================================================
 // Preset Positions - Updated for Endless Canvas
 // ============================================================================
@@ -55,7 +60,9 @@ export function parsePosition(
   positionParam: PositionParameter,
   shapes: Shape[],
   shapeWidth: number = 100,
-  shapeHeight: number = 100
+  shapeHeight: number = 100,
+  viewport?: PositionViewportInfo,
+  options: { forceWithinViewport?: boolean; defaultToViewportCenter?: boolean } = { forceWithinViewport: true, defaultToViewportCenter: true }
 ): PositionParseResult {
   try {
     // Option 1: Preset position
@@ -87,7 +94,10 @@ export function parsePosition(
         // Center the shape at the final position by offsetting by half width/height
         const centeredX = finalX - shapeWidth / 2;
         const centeredY = finalY - shapeHeight / 2;
-        const clamped = clampToCanvas(centeredX, centeredY, shapeWidth, shapeHeight);
+        let clamped = clampToCanvas(centeredX, centeredY, shapeWidth, shapeHeight);
+        if (viewport && options.forceWithinViewport) {
+          clamped = clampToViewport(clamped.x, clamped.y, shapeWidth, shapeHeight, viewport);
+        }
         return { position: clamped };
       }
       return { position: null, error: `Unknown preset: ${positionParam.preset}` };
@@ -95,13 +105,45 @@ export function parsePosition(
 
     // Option 2: Exact coordinates
     if (positionParam.x !== undefined && positionParam.y !== undefined) {
-      const clamped = clampToCanvas(positionParam.x, positionParam.y, shapeWidth, shapeHeight);
-      return { position: clamped };
+      const clampedCanvas = clampToCanvas(positionParam.x, positionParam.y, shapeWidth, shapeHeight);
+      if (viewport && options.forceWithinViewport) {
+        const withinViewport =
+          clampedCanvas.x >= viewport.bounds.minX &&
+          clampedCanvas.x <= viewport.bounds.maxX - shapeWidth &&
+          clampedCanvas.y >= viewport.bounds.minY &&
+          clampedCanvas.y <= viewport.bounds.maxY - shapeHeight;
+
+        if (!withinViewport) {
+          // Snap to viewport center when absolute coords are off-screen
+          const centeredX = viewport.center.x - shapeWidth / 2;
+          const centeredY = viewport.center.y - shapeHeight / 2;
+          const canvasClamped = clampToCanvas(centeredX, centeredY, shapeWidth, shapeHeight);
+          const viewportClamped = clampToViewport(canvasClamped.x, canvasClamped.y, shapeWidth, shapeHeight, viewport);
+          return { position: viewportClamped };
+        }
+        const viewportClamped = clampToViewport(clampedCanvas.x, clampedCanvas.y, shapeWidth, shapeHeight, viewport);
+        return { position: viewportClamped };
+      }
+      return { position: clampedCanvas };
     }
 
     // Option 3: Relative to another shape
     if (positionParam.relativeTo) {
-      return parseRelativePosition(positionParam, shapes, shapeWidth, shapeHeight);
+      const result = parseRelativePosition(positionParam, shapes, shapeWidth, shapeHeight);
+      if (result.position && viewport && options.forceWithinViewport) {
+        const clamped = clampToViewport(result.position.x, result.position.y, shapeWidth, shapeHeight, viewport);
+        return { position: clamped };
+      }
+      return result;
+    }
+
+    // Default: If viewport provided and defaulting allowed, center on viewport
+    if (viewport && options.defaultToViewportCenter) {
+      const centeredX = viewport.center.x - shapeWidth / 2;
+      const centeredY = viewport.center.y - shapeHeight / 2;
+      const clampedCanvas = clampToCanvas(centeredX, centeredY, shapeWidth, shapeHeight);
+      const clampedViewport = clampToViewport(clampedCanvas.x, clampedCanvas.y, shapeWidth, shapeHeight, viewport);
+      return { position: clampedViewport };
     }
 
     return { position: null, error: 'No valid position specified' };
@@ -265,6 +307,27 @@ export function clampToCanvas(
   const minY = CANVAS_BOUNDS.MIN_Y;
   const maxX = CANVAS_BOUNDS.MAX_X - shapeWidth;
   const maxY = CANVAS_BOUNDS.MAX_Y - shapeHeight;
+
+  return {
+    x: Math.max(minX, Math.min(maxX, x)),
+    y: Math.max(minY, Math.min(maxY, y)),
+  };
+}
+
+/**
+ * Clamp coordinates to current viewport bounds, accounting for shape size
+ */
+export function clampToViewport(
+  x: number,
+  y: number,
+  shapeWidth: number,
+  shapeHeight: number,
+  viewport: PositionViewportInfo
+): ParsedPosition {
+  const minX = viewport.bounds.minX;
+  const minY = viewport.bounds.minY;
+  const maxX = viewport.bounds.maxX - shapeWidth;
+  const maxY = viewport.bounds.maxY - shapeHeight;
 
   return {
     x: Math.max(minX, Math.min(maxX, x)),

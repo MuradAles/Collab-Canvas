@@ -255,6 +255,22 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
         isCollapsed ? 'panel-width-collapsed' : 'panel-width-expanded'
       }`}
     >
+      <style>{`
+        /* Custom Scrollbar */
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(155, 155, 155, 0.5);
+          border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(155, 155, 155, 0.7);
+        }
+      `}</style>
       {/* Header */}
       <div className={`${isCollapsed ? 'px-2' : 'px-4'} py-3 border-b border-theme flex items-center justify-between transition-all duration-300 ease-in-out`}>
         <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-full'}`}>
@@ -295,7 +311,7 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
       </div>
 
       {/* Layers List */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-2 scrollbar-thin transition-all duration-300 ease-in-out">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-2 custom-scrollbar transition-all duration-300 ease-in-out">
         {reversedShapes.length === 0 ? (
           <div className={`text-center text-theme-secondary text-sm mt-8 transition-all duration-300 ease-in-out ${isCollapsed ? 'px-1' : 'px-4'}`}>
             {!isCollapsed ? (
