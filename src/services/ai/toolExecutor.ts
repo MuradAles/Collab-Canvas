@@ -6,7 +6,7 @@
 import type { Shape, CanvasContextType, User, ShapeType } from '../../types';
 import type { ToolCall } from './openai';
 import { parsePosition, findShapeByName, type PositionParameter } from './positionParser';
-import { DEFAULT_SHAPE_WIDTH, DEFAULT_SHAPE_HEIGHT, DEFAULT_TEXT_SIZE } from '../../utils/constants';
+import { DEFAULT_SHAPE_WIDTH, DEFAULT_SHAPE_HEIGHT, DEFAULT_TEXT_SIZE, CANVAS_BOUNDS } from '../../utils/constants';
 
 // ============================================================================
 // Type Definitions
@@ -391,8 +391,8 @@ async function executeCreateShape(
         const radius = width / 2;
         // For circles, x,y is the CENTER, so we need to ensure center is at least radius away from edges
         const minPos = radius;
-        const maxPosX = 5000 - radius;
-        const maxPosY = 5000 - radius;
+        const maxPosX = CANVAS_BOUNDS.MAX_X - radius;
+        const maxPosY = CANVAS_BOUNDS.MAX_Y - radius;
         const safeX = Math.max(minPos, Math.min(maxPosX, x));
         const safeY = Math.max(minPos, Math.min(maxPosY, y));
         
@@ -508,8 +508,8 @@ async function executeMoveShape(
     // For circles, ensure the center is at least radius away from edges
     if (shape.type === 'circle') {
       const radius = shape.radius;
-      x = Math.max(radius, Math.min(5000 - radius, x));
-      y = Math.max(radius, Math.min(5000 - radius, y));
+      x = Math.max(radius, Math.min(CANVAS_BOUNDS.MAX_X - radius, x));
+      y = Math.max(radius, Math.min(CANVAS_BOUNDS.MAX_Y - radius, y));
     }
 
     // Update shape position
@@ -529,12 +529,10 @@ async function executeMoveShape(
       let newY2 = lineShape.y2 + dy;
       
       // Clamp both endpoints to canvas bounds
-      const CANVAS_WIDTH = 5000;
-      const CANVAS_HEIGHT = 5000;
-      newX1 = Math.max(0, Math.min(CANVAS_WIDTH, newX1));
-      newY1 = Math.max(0, Math.min(CANVAS_HEIGHT, newY1));
-      newX2 = Math.max(0, Math.min(CANVAS_WIDTH, newX2));
-      newY2 = Math.max(0, Math.min(CANVAS_HEIGHT, newY2));
+      newX1 = Math.max(CANVAS_BOUNDS.MIN_X, Math.min(CANVAS_BOUNDS.MAX_X, newX1));
+      newY1 = Math.max(CANVAS_BOUNDS.MIN_Y, Math.min(CANVAS_BOUNDS.MAX_Y, newY1));
+      newX2 = Math.max(CANVAS_BOUNDS.MIN_X, Math.min(CANVAS_BOUNDS.MAX_X, newX2));
+      newY2 = Math.max(CANVAS_BOUNDS.MIN_Y, Math.min(CANVAS_BOUNDS.MAX_Y, newY2));
       
       await canvasContext.updateShape(shape.id, {
         x1: newX1,

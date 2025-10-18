@@ -3,7 +3,9 @@
  * Renders a line shape with draggable anchors
  */
 
-import { Group, Line, Circle } from 'react-konva';
+import { forwardRef, useEffect } from 'react';
+import { Group, Line, Rect } from 'react-konva';
+import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import type { LineShape as LineShapeType } from '../../../types';
 import { SELECTION_STROKE } from '../../../utils/constants';
@@ -20,33 +22,58 @@ interface LineShapeProps {
   onLineDragEnd: (e: KonvaEventObject<DragEvent>) => void;
   onAnchorDrag: (anchorType: 'start' | 'end', e: KonvaEventObject<DragEvent>) => void;
   onAnchorDragEnd: (anchorType: 'start' | 'end', e: KonvaEventObject<DragEvent>) => void;
+  stageScale?: number;
 }
 
-export function LineShape({
-  shape,
-  isSelected,
-  canDrag,
-  opacity,
-  isLockedByOther,
-  onShapeClick,
-  onLineDragStart,
-  onLineDragMove,
-  onLineDragEnd,
-  onAnchorDrag,
-  onAnchorDragEnd,
-}: LineShapeProps) {
-  // Match transformer anchor size (anchorSize=8 means 8x8 box, so radius=4 for circle)
-  const anchorRadius = 4;
+export const LineShape = forwardRef<Konva.Group, LineShapeProps>(
+  (
+    {
+      shape,
+      isSelected,
+      canDrag,
+      opacity,
+      isLockedByOther,
+      onShapeClick,
+      onLineDragStart,
+      onLineDragMove,
+      onLineDragEnd,
+      onAnchorDrag,
+      onAnchorDragEnd,
+      stageScale = 1,
+    },
+    ref
+  ) => {
+    // Match transformer anchor size (8x8 box matching Transformer anchorSize)
+    // Apply inverse scale to make anchors scale-invariant (constant screen size)
+    const baseAnchorSize = 8;
+    const anchorSize = baseAnchorSize / stageScale;
+    const anchorOffset = anchorSize / 2; // Offset to center the square on the point
+    
+    // Also scale the stroke width to maintain consistent visual appearance
+    const anchorStrokeWidth = 2 / stageScale;
+    
+    // Ensure Group stays at (0, 0) - Konva drag will move it, but we reset it
+    useEffect(() => {
+      if (ref && typeof ref !== 'function' && ref.current) {
+        const group = ref.current;
+        // Reset group position on shape coordinate changes
+        if (group.x() !== 0 || group.y() !== 0) {
+          group.position({ x: 0, y: 0 });
+          group.getLayer()?.batchDraw();
+        }
+      }
+    }, [shape.x1, shape.y1, shape.x2, shape.y2, ref]);
 
-  return (
-    <Group
-      x={0}
-      y={0}
-      draggable={canDrag && isSelected}
-      onDragStart={onLineDragStart}
-      onDragMove={onLineDragMove}
-      onDragEnd={onLineDragEnd}
-    >
+    return (
+      <Group
+        ref={ref}
+        x={0}
+        y={0}
+        draggable={canDrag && isSelected}
+        onDragStart={onLineDragStart}
+        onDragMove={onLineDragMove}
+        onDragEnd={onLineDragEnd}
+      >
       {/* Invisible wider line for easier clicking/selection */}
       <Line
         points={[shape.x1, shape.y1, shape.x2, shape.y2]}
@@ -70,15 +97,18 @@ export function LineShape({
       />
       {isSelected && !isLockedByOther && (
         <>
-          {/* Start anchor */}
-          <Circle
-            x={shape.x1}
-            y={shape.y1}
-            radius={anchorRadius}
+          {/* Start anchor - square matching Transformer style, scale-invariant */}
+          <Rect
+            x={shape.x1 - anchorOffset}
+            y={shape.y1 - anchorOffset}
+            width={anchorSize}
+            height={anchorSize}
             fill="white"
             stroke={SELECTION_STROKE}
-            strokeWidth={2}
+            strokeWidth={anchorStrokeWidth}
+            cornerRadius={2 / stageScale}
             draggable={true}
+            hitStrokeWidth={0}
             onDragStart={(e) => {
               e.cancelBubble = true; // Prevent parent Group drag
             }}
@@ -99,15 +129,18 @@ export function LineShape({
               if (container) container.style.cursor = 'default';
             }}
           />
-          {/* End anchor */}
-          <Circle
-            x={shape.x2}
-            y={shape.y2}
-            radius={anchorRadius}
+          {/* End anchor - square matching Transformer style, scale-invariant */}
+          <Rect
+            x={shape.x2 - anchorOffset}
+            y={shape.y2 - anchorOffset}
+            width={anchorSize}
+            height={anchorSize}
             fill="white"
             stroke={SELECTION_STROKE}
-            strokeWidth={2}
+            strokeWidth={anchorStrokeWidth}
+            cornerRadius={2 / stageScale}
             draggable={true}
+            hitStrokeWidth={0}
             onDragStart={(e) => {
               e.cancelBubble = true; // Prevent parent Group drag
             }}
@@ -132,5 +165,6 @@ export function LineShape({
       )}
     </Group>
   );
-}
+});
 
+LineShape.displayName = 'LineShape';

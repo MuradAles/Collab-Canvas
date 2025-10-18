@@ -1,6 +1,9 @@
 {
   "projects": {
-    "default": "collab-canvas-6a933"
-  }
+    "default": "collab-canvas-6a933",
+    "figma": "collab-canvas-1",
+    "staging": "collab-canvas-1"
+  },
+  "targets": {},
+  "etags": {}
 }
-

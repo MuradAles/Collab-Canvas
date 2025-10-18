@@ -236,11 +236,34 @@ export function useShapeInteraction({
                     if (node) {
                       // Direct Konva position update - instant, no React re-render!
                       if (initialShapePos.x1 !== undefined && initialShapePos.y1 !== undefined) {
-                        // Line shape - update endpoints directly
-                        (node as any).x1(initialShapePos.x1 + deltaX);
-                        (node as any).y1(initialShapePos.y1 + deltaY);
-                        (node as any).x2(initialShapePos.x2! + deltaX);
-                        (node as any).y2(initialShapePos.y2! + deltaY);
+                        // Line shape: node is a Group, find the Line children and update their points
+                        const newX1 = initialShapePos.x1 + deltaX;
+                        const newY1 = initialShapePos.y1 + deltaY;
+                        const newX2 = initialShapePos.x2! + deltaX;
+                        const newY2 = initialShapePos.y2! + deltaY;
+                        
+                        const lineChildren = (node as any).find('Line');
+                        if (lineChildren && lineChildren.length > 0) {
+                          lineChildren.forEach((lineChild: any) => {
+                            lineChild.points([newX1, newY1, newX2, newY2]);
+                          });
+                        }
+                        
+                        // CRITICAL FIX: Also update anchor positions (the Rect elements)
+                        const anchorRects = (node as any).find('Rect');
+                        if (anchorRects && anchorRects.length >= 2) {
+                          // Get anchor size to calculate offset
+                          const anchorSize = anchorRects[0].width();
+                          const anchorOffset = anchorSize / 2;
+                          
+                          // Update start anchor (first Rect)
+                          anchorRects[0].x(newX1 - anchorOffset);
+                          anchorRects[0].y(newY1 - anchorOffset);
+                          
+                          // Update end anchor (second Rect)
+                          anchorRects[1].x(newX2 - anchorOffset);
+                          anchorRects[1].y(newY2 - anchorOffset);
+                        }
                       } else {
                         // Regular shape - update position
                         node.x(initialShapePos.x + deltaX);
@@ -362,12 +385,35 @@ export function useShapeInteraction({
                   if (node) {
                     // Direct Konva update - instant!
                     const u = updates as any;
-                    if (u.x !== undefined) node.x(u.x);
-                    if (u.y !== undefined) node.y(u.y);
-                    if (u.x1 !== undefined) (node as any).x1(u.x1);
-                    if (u.y1 !== undefined) (node as any).y1(u.y1);
-                    if (u.x2 !== undefined) (node as any).x2(u.x2);
-                    if (u.y2 !== undefined) (node as any).y2(u.y2);
+                    if (u.x1 !== undefined && u.y1 !== undefined && u.x2 !== undefined && u.y2 !== undefined) {
+                      // For lines: node is a Group, find the Line children and update their points
+                      const lineChildren = (node as any).find('Line');
+                      if (lineChildren && lineChildren.length > 0) {
+                        lineChildren.forEach((lineChild: any) => {
+                          lineChild.points([u.x1, u.y1, u.x2, u.y2]);
+                        });
+                      }
+                      
+                      // CRITICAL FIX: Also update anchor positions (the Rect elements)
+                      const anchorRects = (node as any).find('Rect');
+                      if (anchorRects && anchorRects.length >= 2) {
+                        // Get anchor size to calculate offset
+                        const anchorSize = anchorRects[0].width();
+                        const anchorOffset = anchorSize / 2;
+                        
+                        // Update start anchor (first Rect)
+                        anchorRects[0].x(u.x1 - anchorOffset);
+                        anchorRects[0].y(u.y1 - anchorOffset);
+                        
+                        // Update end anchor (second Rect)
+                        anchorRects[1].x(u.x2 - anchorOffset);
+                        anchorRects[1].y(u.y2 - anchorOffset);
+                      }
+                    } else {
+                      // Regular shapes - update position
+                      if (u.x !== undefined) node.x(u.x);
+                      if (u.y !== undefined) node.y(u.y);
+                    }
                   }
                 });
                 // Redraw once
@@ -381,21 +427,29 @@ export function useShapeInteraction({
             const now = Date.now();
             const timeSinceLastFirebaseUpdate = now - lastFirebaseUpdateRef.current;
             
-            if (timeSinceLastFirebaseUpdate >= FIREBASE_THROTTLE_MS) {
-              if (shape && shape.type === 'line') {
-                // For lines, send RTDB update with coordinates
-                const initialPos = initialPositionsRef.current.get(pending.shapeId);
-                if (initialPos && initialPos.x1 !== undefined && initialPos.y1 !== undefined &&
-                    initialPos.x2 !== undefined && initialPos.y2 !== undefined) {
-                  const deltaX = pending.x - initialPos.x;
-                  const deltaY = pending.y - initialPos.y;
-                  
-                  const newX1 = initialPos.x1 + deltaX;
-                  const newY1 = initialPos.y1 + deltaY;
-                  const newX2 = initialPos.x2 + deltaX;
-                  const newY2 = initialPos.y2 + deltaY;
-                  
-                  // Update RTDB at 60 FPS
+            if (shape && shape.type === 'line') {
+              // For lines, calculate new coordinates
+              const initialPos = initialPositionsRef.current.get(pending.shapeId);
+              if (initialPos && initialPos.x1 !== undefined && initialPos.y1 !== undefined &&
+                  initialPos.x2 !== undefined && initialPos.y2 !== undefined) {
+                const deltaX = pending.x - initialPos.x;
+                const deltaY = pending.y - initialPos.y;
+                
+                const newX1 = initialPos.x1 + deltaX;
+                const newY1 = initialPos.y1 + deltaY;
+                const newX2 = initialPos.x2 + deltaX;
+                const newY2 = initialPos.y2 + deltaY;
+                
+                // CRITICAL: Update local state immediately for smooth visual feedback
+                updateShape(pending.shapeId, {
+                  x1: newX1,
+                  y1: newY1,
+                  x2: newX2,
+                  y2: newY2,
+                } as Partial<Shape>, true).catch(console.error); // localOnly: true
+                
+                // Update RTDB at 60 FPS (throttled)
+                if (timeSinceLastFirebaseUpdate >= FIREBASE_THROTTLE_MS) {
                   updateDragPosition(
                     'global-canvas-v1',
                     pending.shapeId,
@@ -413,10 +467,14 @@ export function useShapeInteraction({
                     newX2,
                     newY2
                   ).catch(console.error);
+                  
+                  lastFirebaseUpdateRef.current = now;
                 }
-              } else {
-                // Regular shapes (circle, rectangle, text)
-                // Update RTDB at 60 FPS
+              }
+            } else {
+              // Regular shapes (circle, rectangle, text)
+              // Update RTDB at 60 FPS
+              if (timeSinceLastFirebaseUpdate >= FIREBASE_THROTTLE_MS) {
                 updateDragPosition(
                   'global-canvas-v1',
                   pending.shapeId,
@@ -425,9 +483,9 @@ export function useShapeInteraction({
                   currentUserId,
                   currentUserName || 'Unknown User'
                 ).catch(console.error);
+                
+                lastFirebaseUpdateRef.current = now;
               }
-              
-              lastFirebaseUpdateRef.current = now;
             }
           }
           

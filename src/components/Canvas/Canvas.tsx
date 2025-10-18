@@ -903,6 +903,7 @@ export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
                 isDraggable={currentTool === 'select'}
                 currentUserId={currentUser?.uid}
                 onDoubleClick={shape.type === 'text' ? () => handleTextDoubleClick(shape) : undefined}
+                stageScale={stageScale}
               />
             ))}
 
@@ -927,6 +928,7 @@ export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
                   currentUserId={currentUser?.uid}
                   onDoubleClick={shape.type === 'text' ? () => handleTextDoubleClick(shape as TextShape) : undefined}
                   onNodeRef={registerShapeNode}
+                  stageScale={stageScale}
                 />
               );
             })}

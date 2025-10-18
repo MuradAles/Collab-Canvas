@@ -40,7 +40,7 @@ interface UseShapeHandlersProps {
     x2?: number,
     y2?: number
   ) => void;
-  shapeRef: React.RefObject<Konva.Rect | Konva.Circle | Konva.Text | null>;
+  shapeRef: React.RefObject<Konva.Rect | Konva.Circle | Konva.Text | Konva.Group | null>;
 }
 
 export function useShapeHandlers({
@@ -280,9 +280,15 @@ export function useShapeHandlers({
     (anchorType: 'start' | 'end', e: Konva.KonvaEventObject<DragEvent>) => {
       if (shape.type !== 'line') return;
       const lineShape = shape as LineShape;
-      const circle = e.target as Konva.Circle;
-      const newX = circle.x();
-      const newY = circle.y();
+      const anchor = e.target as Konva.Rect;
+      
+      // Anchor is positioned with top-left at (x - offset, y - offset)
+      // So we need to add offset to get the center position
+      // Anchor width changes with scale, so read it directly from the element
+      const anchorWidth = anchor.width();
+      const anchorOffset = anchorWidth / 2;
+      const newX = anchor.x() + anchorOffset;
+      const newY = anchor.y() + anchorOffset;
 
       const currentX1 = anchorType === 'start' ? newX : lineShape.x1;
       const currentY1 = anchorType === 'start' ? newY : lineShape.y1;
@@ -297,9 +303,15 @@ export function useShapeHandlers({
 
   const handleAnchorDragEnd = useCallback(
     (anchorType: 'start' | 'end', e: Konva.KonvaEventObject<DragEvent>) => {
-      const circle = e.target as Konva.Circle;
-      const newX = circle.x();
-      const newY = circle.y();
+      const anchor = e.target as Konva.Rect;
+      
+      // Anchor is positioned with top-left at (x - offset, y - offset)
+      // So we need to add offset to get the center position
+      // Anchor width changes with scale, so read it directly from the element
+      const anchorWidth = anchor.width();
+      const anchorOffset = anchorWidth / 2;
+      const newX = anchor.x() + anchorOffset;
+      const newY = anchor.y() + anchorOffset;
 
       const updates: { x1?: number; y1?: number; x2?: number; y2?: number } = {};
 
