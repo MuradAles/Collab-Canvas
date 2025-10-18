@@ -3,7 +3,7 @@
  * Handles CRUD operations for shapes (add, update, delete)
  */
 
-import { useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 import type { Shape, ShapeUpdate, User } from '../../types';
 import {
   createShape as createShapeInFirestore,

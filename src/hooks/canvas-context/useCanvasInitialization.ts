@@ -3,7 +3,7 @@
  * Handles Firestore subscriptions, real-time sync, and cleanup
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import type { Shape, User } from '../../types';
 import type { DragPosition, SelectionDrag } from '../../services/dragSync';
 import {
