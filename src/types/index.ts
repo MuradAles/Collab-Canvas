@@ -180,14 +180,28 @@ export interface OnlineUser {
   isOnline: boolean;
 }
 
+export interface SelectionDrag {
+  userId: string;
+  userName: string;
+  userColor: string;
+  shapeIds: string[];
+  shapeCount: number;
+  initialPositions: Record<string, { x: number; y: number; x1?: number; y1?: number; x2?: number; y2?: number }>;
+  deltaX: number;
+  deltaY: number;
+  timestamp: number;
+}
+
 export interface CanvasContextType {
   shapes: Shape[];
   selectedIds: string[];
   loading: boolean;
   currentTool: Tool;
   selectionRect: SelectionRect | null;
+  selectionDrags: Map<string, SelectionDrag>;
   addShape: (shape: Omit<Shape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>, options?: { skipAutoLock?: boolean }) => Promise<void>;
   updateShape: (id: string, updates: ShapeUpdate, localOnly?: boolean) => Promise<void>;
+  updateShapesBatchLocal: (updates: Array<{ id: string; updates: Partial<Shape> }>) => void;
   deleteShape: (id: string) => Promise<void>;
   deleteShapes: (shapeIds: string[]) => Promise<void>;
   selectShape: (id: string | null, addToSelection?: boolean) => void;

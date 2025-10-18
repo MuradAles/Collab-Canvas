@@ -7,7 +7,7 @@ import { initializeApp } from 'firebase/app';
 import type { FirebaseApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import type { Auth } from 'firebase/auth';
-import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
+import { initializeFirestore, getFirestore, persistentLocalCache } from 'firebase/firestore';
 import type { Firestore } from 'firebase/firestore';
 import { getDatabase } from 'firebase/database';
 import type { Database } from 'firebase/database';
@@ -35,23 +35,29 @@ const app: FirebaseApp = initializeApp(firebaseConfig);
 
 // Initialize Services
 export const auth: Auth = getAuth(app);
-export const db: Firestore = getFirestore(app);
-export const rtdb: Database = getDatabase(app);
 
-// ============================================================================
-// Enable Offline Persistence for Firestore
-// ============================================================================
-
-// Enable offline persistence for better reliability
-enableIndexedDbPersistence(db).catch((err) => {
-  if (err.code === 'failed-precondition') {
-    // Multiple tabs open, persistence can only be enabled in one tab at a time.
-    console.warn('Firebase persistence failed: Multiple tabs open');
-  } else if (err.code === 'unimplemented') {
-    // The current browser doesn't support persistence
-    console.warn('Firebase persistence not supported in this browser');
+// Initialize Firestore with persistent local cache (replaces deprecated enableIndexedDbPersistence)
+// Check if Firestore is already initialized to avoid HMR errors
+let db: Firestore;
+try {
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      // Optional: configure tab manager for multi-tab support
+      // By default, it will handle multiple tabs gracefully
+    })
+  });
+} catch (error) {
+  // If already initialized (e.g., during HMR), get the existing instance
+  const firebaseError = error as { code?: string; message?: string };
+  if (firebaseError.code === 'failed-precondition' && firebaseError.message?.includes('already been called')) {
+    db = getFirestore(app);
+  } else {
+    throw error;
   }
-});
+}
+
+export { db };
+export const rtdb: Database = getDatabase(app);
 
 // ============================================================================
 // Export Firebase App

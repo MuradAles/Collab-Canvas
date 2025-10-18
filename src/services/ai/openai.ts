@@ -106,10 +106,10 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
               },
             },
           },
-          color: {
-            type: 'string',
-            description: 'Color of the shape (hex code or color name like "red", "blue", "green")',
-          },
+          color: { type: 'string', description: 'Fill color (hex or common name)' },
+          strokeColor: { type: 'string', description: 'Stroke color (hex or common name)' },
+          strokeWidth: { type: 'number', description: 'Stroke width 0-20' },
+          cornerRadius: { type: 'number', description: 'Corner radius for rectangles 0-50' },
           text: {
             type: 'string',
             description: 'Text content (required for text shapes)',
@@ -382,7 +382,13 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
 export async function sendAICommand(
   userMessage: string,
   shapes: Shape[],
-  conversationHistory: ConversationMessage[] = []
+  conversationHistory: ConversationMessage[] = [],
+  extras?: {
+    viewport?: {
+      center: { x: number; y: number };
+      bounds: { minX: number; maxX: number; minY: number; maxY: number };
+    };
+  }
 ): Promise<AIResponse> {
   const debugInfo: string[] = [];
 
@@ -397,62 +403,58 @@ export async function sendAICommand(
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
       {
         role: 'system',
-        content: `You are an AI assistant that helps users manipulate a collaborative canvas. 
-The canvas is 5000x5000 pixels. You can create shapes, move shapes, and query the canvas state.
+        content: `You are an AI assistant that manipulates a collaborative canvas. The canvas bounds are dynamic; follow the ranges described in the context rather than assuming fixed sizes.
 
-🎨 AVAILABLE SHAPE TYPES (you can ALWAYS create these):
-- rectangle (also called "square" by users - just make width = height)
-- circle
+🎨 Available shapes (always allowed to create):
+- rectangle ("square" means width = height)
+- circle (radius)
 - text
 - line
 
-Important rules:
-1. ⚠️ CREATING vs MANIPULATING shapes:
-   - You can ALWAYS CREATE new shapes of ANY TYPE (rectangle, circle, text, line)
-   - You can ONLY MANIPULATE shapes that exist (shown in canvas context below)
-   - When user says "create square" → createShape with type="rectangle" and equal width/height
-   - When user says "create circle" → createShape with type="circle"
-2. ⚠️ CRITICAL: ONLY use shape names that are shown in the current canvas context when MANIPULATING
-   - The canvas context shows ALL shapes that currently exist
-   - When user says "squares" or "rectangles" they mean the SAME thing
-   - When user says "all rectangles" find ALL shapes with "Rectangle" in their name FROM THE CANVAS CONTEXT
-   - Shape names look like: "Rectangle 1", "Rectangle 2", "Circle 1", "Line 1", etc.
-   - NEVER use shape names like "Rectangle 6" or "Rectangle 7" if they're not in the canvas context
-   - If you just created shapes and need to manipulate them, ONLY use shapes you see in the current canvas context
-3. ⚠️ Shape existence: BEFORE manipulating shapes, verify they exist in the canvas context
-   - If a shape name isn't listed in the canvas context, it doesn't exist
-   - Don't assume shapes exist based on previous conversation - ALWAYS check current canvas context
-4. For relative positioning, verify the target shape exists
-5. Use preset positions like "center" when appropriate
-6. Clamp all coordinates to 0-5000 range
-7. For multiple shapes, you can call createShape multiple times
-8. Remember previous conversation context - if user says "these shapes" or "those objects", refer to what was discussed
+Correctness rules:
+1) Only manipulate shapes that exist in the canvas context below. Use exact names from the context.
+2) Defaults when unspecified:
+   - Rectangle: 100x100 (square if user says "square")
+   - Circle: radius 50 (you may pass size.width=100 → radius=50)
+   - Text: content "Text", fontSize 16
+   - Line: horizontal, length 100; x,y is the left endpoint
+3) Clamp all coordinates to the canvas bounds shown in context. For circles, x,y is center and must be ≥ radius from edges.
+4) Terminology mapping to tools:
+   - Rectangle "radius" means corner radius → use changeShapeStyle with cornerRadius (do NOT use resizeShape.radius for rectangles)
+   - Circle radius → use resizeShape with radius
+   - Rectangle size changes → use resizeShape with width/height
+   - Line length/orientation → createShape (length via size.width), moveShape for position
+5) Relative placement must include relativeTo + direction + offset (default 50).
+6) Prefer the minimum number of tool calls to fulfill a request.
 
-Understanding user intent:
-- "Put together" / "group" / "stack" / "cluster" = Move ALL shapes to the SAME position (they will overlap/stack)
-  * Example: "put all circles together at center" → Move ALL circles to x=2500, y=2500
-  * Example: "group rectangles" → Move all rectangles to same x, y coordinates
-- "Arrange in a line" / "sort" / "line up" = Arrange shapes in a LINE with spacing
-  * Example: "arrange circles in a line" → Space them out: x=1000, x=1300, x=1600, etc.
-- "Middle of canvas" / "center" = Exact center point (x=2500, y=2500)
+Styling at creation:
+- When the user specifies corner radius, stroke, or text color, set them during createShape (use color for fill, strokeColor/strokeWidth, cornerRadius). Avoid post-creation style calls unless needed across existing shapes.
 
-Arranging shapes in a line:
-- "Horizontally middle" = arrange in a horizontal line at vertical center (y = 2500)
-- "Vertically middle" = arrange in a vertical line at horizontal center (x = 2500)
-- When arranging multiple shapes in a line, ALWAYS use exact x,y coordinates, NOT preset positions
-- ⚠️ CRITICAL: Calculate spacing based on ACTUAL shape sizes from canvas context (radius for circles, width/height for rectangles)
-  * For circles: Use ACTUAL radius values from canvas context
-    - Spacing between circles = radius_of_current + radius_of_next + 100px gap
-    - Example: Circle 1 (radius 50) and Circle 2 (radius 75):
-      * Circle 1 at x=1000
-      * Circle 2 at x=1000 + 50 + 75 + 100 = 1225
-  * For rectangles: Use ACTUAL width values from canvas context
-    - Spacing = width_of_current + width_of_next / 2 + 100px gap
-  * NEVER use fixed spacing - always calculate based on actual shape dimensions
-  * Example for horizontal line with circles of different sizes:
-    - Circle 1 (radius 50): x=1000, y=2500
-    - Circle 2 (radius 75): x=1225, y=2500 (50+75+100 spacing)
-    - Circle 3 (radius 50): x=1450, y=2500 (75+50+100 spacing)
+Arrangements and spacing:
+- When arranging multiple items (e.g., "line up"), compute explicit x,y using actual dimensions from context.
+- Do not use presets for each item in sequences; anchor once and accumulate positions using previous widths/radii + a reasonable gap (e.g., 100).
+
+Viewport anchoring:
+- If the user does not specify position, anchor to the user's current viewport center.
+- For sequences/arrangements, use the viewport's center Y (horizontal) or center X (vertical) as the baseline.
+- Viewport info is provided below.
+- Always compute absolute x,y using the viewport center; do NOT use preset "center" for viewport anchoring. Only use presets if the user asks for canvas positions.
+- Convenience: let vcx = viewport.center.x, vcy = viewport.center.y. For centered rectangle width w: x = vcx - w/2. For stacking: start at vcy and add/subtract 16px per row.
+
+Multi-create in one request (critical):
+- Do NOT reference shapes created earlier in the same request using relativeTo; they won't appear yet in the canvas context.
+- Instead, compute absolute x,y positions for every new element from the viewport anchor and the specified spacing.
+- Only use relativeTo for shapes that already exist in the current canvas context.
+
+UI wireframe interpretation (using shapes only, not real code):
+- If the user asks for UI like a "login page" or "navbar", create a wireframe using rectangles and text:
+  - Inputs: rectangles 320x44 with text labels above
+  - Buttons: rectangles 120x44 with text centered
+  - Headings: text (fontSize 24–32), body text 14–16
+  - Spacing: 16px between stacked elements, center on canvas unless directed otherwise
+
+Current viewport:
+${extras?.viewport ? `center=(${extras.viewport.center.x}, ${extras.viewport.center.y}), bounds=[${extras.viewport.bounds.minX}..${extras.viewport.bounds.maxX}, ${extras.viewport.bounds.minY}..${extras.viewport.bounds.maxY}], vcx=${extras.viewport.center.x}, vcy=${extras.viewport.center.y}` : 'unknown'}
 
 Current canvas state:
 ${canvasContext}`,
@@ -473,7 +475,15 @@ ${canvasContext}`,
     });
 
     // Create the chat completion - use client-side in development, server-side in production
-    let response: any;
+    type ChatCompletionLike = {
+      choices: Array<{
+        message: {
+          content?: string | null;
+          tool_calls?: Array<{ id: string; function?: { name: string; arguments: string } }>;
+        };
+      }>;
+    };
+    let response: ChatCompletionLike;
     
     if (import.meta.env.DEV) {
       // Development: Use client-side OpenAI (API key exposed but only locally)
@@ -519,8 +529,8 @@ ${canvasContext}`,
     const message = choice.message;
 
     // Extract tool calls if present
-    const toolCalls: ToolCall[] = message.tool_calls?.map((tc: any) => {
-      if ('function' in tc) {
+    const toolCalls: ToolCall[] = message.tool_calls?.map((tc: { id: string; function?: { name: string; arguments: string } }) => {
+      if (tc.function) {
         return {
           id: tc.id,
           function: {
@@ -569,19 +579,19 @@ function buildCanvasContext(shapes: Shape[]): string {
     const locked = shape.isLocked ? ` (locked by ${shape.lockedByName})` : '';
     
     if (shape.type === 'line') {
-      return `- "${shape.name}": Line from (${shape.x1}, ${shape.y1}) to (${shape.x2}, ${shape.y2})${locked}`;
+      return `- "${shape.name}" [id=${shape.id}]: Line from (${shape.x1}, ${shape.y1}) to (${shape.x2}, ${shape.y2})${locked}`;
     }
     
     if (shape.type === 'circle') {
-      return `- "${shape.name}": Circle at (${shape.x}, ${shape.y}), radius ${shape.radius}, color ${shape.fill}${locked}`;
+      return `- "${shape.name}" [id=${shape.id}]: Circle at (${shape.x}, ${shape.y}), radius ${shape.radius}, color ${shape.fill}${locked}`;
     }
     
     if (shape.type === 'text') {
-      return `- "${shape.name}": Text "${shape.text}" at (${shape.x}, ${shape.y}), size ${shape.fontSize}${locked}`;
+      return `- "${shape.name}" [id=${shape.id}]: Text "${shape.text}" at (${shape.x}, ${shape.y}), size ${shape.fontSize}${locked}`;
     }
     
     // Rectangle
-    return `- "${shape.name}": Rectangle (square) at (${shape.x}, ${shape.y}), size ${shape.width}x${shape.height}, color ${shape.fill}${locked}`;
+    return `- "${shape.name}" [id=${shape.id}]: Rectangle at (${shape.x}, ${shape.y}), size ${shape.width}x${shape.height}, color ${shape.fill}${locked}`;
   });
 
   // Group by type for clarity

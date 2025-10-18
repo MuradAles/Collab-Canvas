@@ -1,10 +1,11 @@
 /**
  * Position Parser
  * Parses position parameters from AI commands into actual canvas coordinates
+ * Updated for endless canvas (0 to 100k, center at 50k, 50k)
  */
 
 import type { Shape, LineShape } from '../../types';
-import { CANVAS_WIDTH, CANVAS_HEIGHT } from '../../utils/constants';
+import { CANVAS_BOUNDS } from '../../utils/constants';
 
 // ============================================================================
 // Type Definitions
@@ -16,7 +17,7 @@ export interface PositionParameter {
   y?: number;
   relativeTo?: string;
   offset?: number;
-  direction?: 'right' | 'left' | 'top' | 'bottom';
+  direction?: 'right' | 'left' | 'top' | 'bottom' | 'center';
 }
 
 export interface ParsedPosition {
@@ -30,17 +31,17 @@ export interface PositionParseResult {
 }
 
 // ============================================================================
-// Preset Positions
+// Preset Positions - Updated for Endless Canvas
 // ============================================================================
 
 const PRESET_POSITIONS: Record<string, ParsedPosition> = {
-  'center': { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT / 2 },
-  'top-left': { x: 100, y: 100 },
-  'top-right': { x: CANVAS_WIDTH - 100, y: 100 },
-  'top-center': { x: CANVAS_WIDTH / 2, y: 100 },
-  'bottom-left': { x: 100, y: CANVAS_HEIGHT - 100 },
-  'bottom-right': { x: CANVAS_WIDTH - 100, y: CANVAS_HEIGHT - 100 },
-  'bottom-center': { x: CANVAS_WIDTH / 2, y: CANVAS_HEIGHT - 100 },
+  'center': { x: CANVAS_BOUNDS.CENTER_X, y: CANVAS_BOUNDS.CENTER_Y }, // (50000, 50000)
+  'top-left': { x: CANVAS_BOUNDS.MIN_X + 100, y: CANVAS_BOUNDS.MIN_Y + 100 }, // (100, 100)
+  'top-right': { x: CANVAS_BOUNDS.MAX_X - 100, y: CANVAS_BOUNDS.MIN_Y + 100 }, // (99900, 100)
+  'top-center': { x: CANVAS_BOUNDS.CENTER_X, y: CANVAS_BOUNDS.MIN_Y + 100 }, // (50000, 100)
+  'bottom-left': { x: CANVAS_BOUNDS.MIN_X + 100, y: CANVAS_BOUNDS.MAX_Y - 100 }, // (100, 99900)
+  'bottom-right': { x: CANVAS_BOUNDS.MAX_X - 100, y: CANVAS_BOUNDS.MAX_Y - 100 }, // (99900, 99900)
+  'bottom-center': { x: CANVAS_BOUNDS.CENTER_X, y: CANVAS_BOUNDS.MAX_Y - 100 }, // (50000, 99900)
 };
 
 // ============================================================================
@@ -151,7 +152,7 @@ function parseRelativePosition(
  */
 export function calculateRelativePosition(
   targetShape: Shape,
-  direction: 'right' | 'left' | 'top' | 'bottom',
+  direction: 'right' | 'left' | 'top' | 'bottom' | 'center',
   offset: number,
   newShapeWidth: number = 100,
   newShapeHeight: number = 100
@@ -171,6 +172,8 @@ export function calculateRelativePosition(
         return { x: centerX, y: centerY - offset - newShapeHeight / 2 };
       case 'bottom':
         return { x: centerX, y: centerY + offset + newShapeHeight / 2 };
+      case 'center':
+        return { x: centerX - newShapeWidth / 2, y: centerY - newShapeHeight / 2 };
       default:
         return { x: centerX + offset + newShapeWidth / 2, y: centerY };
     }
@@ -191,6 +194,8 @@ export function calculateRelativePosition(
         return { x: centerX, y: centerY - radius - offset - newShapeHeight / 2 };
       case 'bottom':
         return { x: centerX, y: centerY + radius + offset + newShapeHeight / 2 };
+      case 'center':
+        return { x: centerX - newShapeWidth / 2, y: centerY - newShapeHeight / 2 };
       default:
         return { x: centerX + radius + offset + newShapeWidth / 2, y: centerY };
     }
@@ -212,6 +217,11 @@ export function calculateRelativePosition(
       return { 
         x: targetShape.x + (shapeWidth / 2) - (newShapeWidth / 2), 
         y: targetShape.y + shapeHeight + offset 
+      };
+    case 'center':
+      return {
+        x: targetShape.x + (shapeWidth / 2) - (newShapeWidth / 2),
+        y: targetShape.y + (shapeHeight / 2) - (newShapeHeight / 2),
       };
     default:
       return { x: targetShape.x + shapeWidth + offset, y: targetShape.y };
@@ -242,6 +252,7 @@ export function findShapeByName(shapeName: string, shapes: Shape[]): Shape | nul
 
 /**
  * Clamp coordinates to canvas bounds, accounting for shape size
+ * Updated for endless canvas (0 to 100k)
  */
 export function clampToCanvas(
   x: number,
@@ -250,10 +261,10 @@ export function clampToCanvas(
   shapeHeight: number = 0
 ): ParsedPosition {
   // Ensure shape stays within bounds
-  const minX = 0;
-  const minY = 0;
-  const maxX = CANVAS_WIDTH - shapeWidth;
-  const maxY = CANVAS_HEIGHT - shapeHeight;
+  const minX = CANVAS_BOUNDS.MIN_X;
+  const minY = CANVAS_BOUNDS.MIN_Y;
+  const maxX = CANVAS_BOUNDS.MAX_X - shapeWidth;
+  const maxY = CANVAS_BOUNDS.MAX_Y - shapeHeight;
 
   return {
     x: Math.max(minX, Math.min(maxX, x)),
@@ -263,8 +274,10 @@ export function clampToCanvas(
 
 /**
  * Validate if a position is within canvas bounds
+ * Updated for endless canvas (0 to 100k)
  */
 export function isWithinBounds(x: number, y: number): boolean {
-  return x >= 0 && x <= CANVAS_WIDTH && y >= 0 && y <= CANVAS_HEIGHT;
+  return x >= CANVAS_BOUNDS.MIN_X && x <= CANVAS_BOUNDS.MAX_X && 
+         y >= CANVAS_BOUNDS.MIN_Y && y <= CANVAS_BOUNDS.MAX_Y;
 }
 

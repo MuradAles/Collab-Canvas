@@ -32,15 +32,18 @@ Build a multiplayer canvas application where users can collaborate in real-time,
 5. 60 FPS maintained during all interactions
 6. Deployed and accessible via public URL
 
-## Out of Scope for MVP
-- Multiple shape types (only rectangles)
-- Color customization (fixed gray fill)
-- Resize/rotate functionality
-- Multi-select
-- Undo/redo
-- Mobile support
-- Multiple projects/canvases
-- AI features
+## Phase 2: Advanced Features (In Planning)
+- ✅ **Projects & Pages**: Multi-project workspace with permissions
+- ✅ **Grouping**: Figma-style shape grouping with hierarchy
+- ✅ **Endless Canvas**: 100,000 x 100,000 canvas with viewport culling
+- 📋 Comprehensive PRD and task lists created
+- 🎯 Implementation starting with Projects & Pages
+
+## Out of Scope
+- Undo/redo (future)
+- Mobile support (future)
+- Project templates (future)
+- Version history (future)
 
 ## Technology Stack
 - **Frontend**: React 19, TypeScript, Vite, Konva.js, Tailwind CSS

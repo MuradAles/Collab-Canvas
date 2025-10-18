@@ -3,7 +3,7 @@
  * Provides authentication state and methods to the entire application
  */
 
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import {
   onAuthStateChanged,
@@ -46,7 +46,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   /**
    * Sign up with email and password
    */
-  const signup = async (
+  const signup = useCallback(async (
     email: string,
     password: string,
     displayName?: string
@@ -76,24 +76,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
       console.error('Signup error:', error);
       throw new Error(error.message || 'Failed to create account');
     }
-  };
+  }, []);
 
   /**
    * Log in with email and password
    */
-  const login = async (email: string, password: string): Promise<void> => {
+  const login = useCallback(async (email: string, password: string): Promise<void> => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
     } catch (error: any) {
       console.error('Login error:', error);
       throw new Error(error.message || 'Failed to log in');
     }
-  };
+  }, []);
 
   /**
    * Sign in with Google
    */
-  const loginWithGoogle = async (): Promise<void> => {
+  const loginWithGoogle = useCallback(async (): Promise<void> => {
     try {
       const provider = new GoogleAuthProvider();
       const userCredential = await signInWithPopup(auth, provider);
@@ -117,12 +117,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       console.error('Google login error:', error);
       throw new Error(error.message || 'Failed to sign in with Google');
     }
-  };
+  }, []);
 
   /**
    * Log out
    */
-  const logout = async (): Promise<void> => {
+  const logout = useCallback(async (): Promise<void> => {
     try {
       // Clean up user presence and locks BEFORE signing out
       if (currentUser) {
@@ -151,7 +151,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
       throw new Error(error.message || 'Failed to log out');
     }
-  };
+  }, [currentUser]);
 
   // ============================================================================
   // Auth State Listener
@@ -179,14 +179,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // Context Value
   // ============================================================================
 
-  const value: AuthContextType = {
+  const value: AuthContextType = useMemo(() => ({
     currentUser,
     loading,
     login,
     signup,
     loginWithGoogle,
     logout,
-  };
+  }), [currentUser, loading, login, signup, loginWithGoogle, logout]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

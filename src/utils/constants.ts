@@ -7,8 +7,21 @@
 // Canvas Dimensions
 // ============================================================================
 
-export const CANVAS_WIDTH = 5000;
-export const CANVAS_HEIGHT = 5000;
+// Endless Canvas: 25,000 x 25,000 pixels (0 to 25k)
+export const CANVAS_WIDTH = 25000;
+export const CANVAS_HEIGHT = 25000;
+
+// Canvas bounds for shape positioning (all positive for simplicity)
+export const CANVAS_BOUNDS = {
+  MIN_X: 0,
+  MAX_X: 25000,
+  MIN_Y: 0,
+  MAX_Y: 25000,
+  WIDTH: 25000,
+  HEIGHT: 25000,
+  CENTER_X: 12500,
+  CENTER_Y: 12500,
+};
 
 // Default viewport dimensions (will be dynamic based on window size)
 export const DEFAULT_VIEWPORT_WIDTH = 1400;
@@ -90,4 +103,14 @@ export const CURSOR_COLORS = [
 
 export const TARGET_FPS = 60;
 export const MAX_SHAPES = 500; // Performance target for MVP
+
+// Multi-shape drag optimization threshold
+// When dragging this many or more shapes, use selection drag (delta-based)
+// instead of individual shape updates for better performance
+export const MULTI_DRAG_THRESHOLD = 2; // Changed from 10 to 2 - optimize all multi-drags
+
+// Firebase update throttle (in milliseconds)
+// Throttle Firebase writes to 60 FPS (16.67ms) for efficiency
+// Local Konva updates remain at native RAF speed (60-240 FPS depending on monitor)
+export const FIREBASE_THROTTLE_MS = 16.67; // 60 FPS
 

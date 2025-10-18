@@ -11,7 +11,7 @@ interface AIInputProps {
   initialValue?: string;
 }
 
-export const AIInput = forwardRef<HTMLInputElement, AIInputProps>(
+export const AIInput = forwardRef<HTMLTextAreaElement, AIInputProps>(
   ({ onSendMessage, isLoading, initialValue }, ref) => {
     const [value, setValue] = useState('');
 
@@ -30,7 +30,7 @@ export const AIInput = forwardRef<HTMLInputElement, AIInputProps>(
       setValue('');
     };
 
-    const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         handleSubmit();
@@ -40,27 +40,27 @@ export const AIInput = forwardRef<HTMLInputElement, AIInputProps>(
     return (
       <div className="flex flex-col gap-2">
         {isLoading && (
-          <div className="flex items-center gap-2 text-sm text-blue-600">
-            <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent"></div>
+          <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 dark:border-blue-400 border-t-transparent"></div>
             <span>AI is thinking...</span>
           </div>
         )}
         
         <div className="flex gap-2">
-          <input
+          <textarea
             ref={ref}
-            type="text"
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={isLoading}
             placeholder="Ask AI to create or move shapes..."
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed text-sm"
+            rows={3}
+            className="flex-1 px-3 py-2 bg-theme-surface text-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-theme-surface-hover disabled:cursor-not-allowed text-sm resize-none overflow-y-auto scrollbar-thin"
           />
           <button
             onClick={handleSubmit}
             disabled={!value.trim() || isLoading}
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-theme-surface-hover disabled:text-theme-secondary disabled:cursor-not-allowed transition-colors text-sm font-medium"
             title="Send message"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

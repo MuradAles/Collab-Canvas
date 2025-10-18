@@ -56,7 +56,7 @@ function ToastItem({ message, onDismiss }: { message: ToastMessage; onDismiss: (
   return (
     <div
       className={`
-        bg-white border border-gray-200 rounded-lg shadow-lg p-4 min-w-[300px] max-w-[400px]
+        bg-theme-surface border border-theme rounded-lg shadow-lg p-4 min-w-[300px] max-w-[400px]
         transform transition-all duration-300 ease-out
         ${isVisible ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}
       `}
@@ -64,14 +64,14 @@ function ToastItem({ message, onDismiss }: { message: ToastMessage; onDismiss: (
       <div className="flex items-start gap-3">
         <span className="text-2xl">🤖</span>
         <div className="flex-1">
-          <p className="text-sm font-semibold text-gray-800">
+          <p className="text-sm font-semibold text-theme-primary">
             {message.userName} used AI
           </p>
-          <p className="text-sm text-gray-600 mt-1">{message.summary}</p>
+          <p className="text-sm text-theme-secondary mt-1">{message.summary}</p>
         </div>
         <button
           onClick={handleDismiss}
-          className="text-gray-400 hover:text-gray-600 transition-colors"
+          className="text-theme-secondary hover:text-theme-primary transition-colors"
           title="Dismiss"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

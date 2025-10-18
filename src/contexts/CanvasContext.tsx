@@ -33,7 +33,9 @@ import {
 } from '../services/canvas';
 import {
   subscribeToDragPositions,
+  subscribeToSelectionDrags,
   type DragPosition,
+  type SelectionDrag,
 } from '../services/dragSync';
 
 const CanvasContext = createContext<CanvasContextType | null>(null);
@@ -47,6 +49,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [dragPositions, setDragPositions] = useState<Map<string, DragPosition>>(new Map());
+  const [selectionDrags, setSelectionDrags] = useState<Map<string, SelectionDrag>>(new Map());
   const [localUpdates, setLocalUpdates] = useState<Map<string, Partial<Shape>>>(new Map());
   const [currentTool, setCurrentTool] = useState<Tool>('select');
   const [selectionRect, setSelectionRect] = useState<SelectionRect | null>(null);
@@ -90,6 +93,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
 
     let unsubscribeShapes: (() => void) | null = null;
     let unsubscribeDrag: (() => void) | null = null;
+    let unsubscribeSelectionDrag: (() => void) | null = null;
 
     const setupCanvas = async () => {
       try {
@@ -161,11 +165,35 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
           // Schedule update on next frame (max 60fps)
           dragUpdateRafRef.current = requestAnimationFrame(() => {
             if (pendingDragPositionsRef.current) {
-              setDragPositions(pendingDragPositionsRef.current);
+              // Use functional update to avoid dependency on dragPositions state
+              setDragPositions(prev => {
+                // Only update if positions actually changed
+                const newPositions = pendingDragPositionsRef.current;
+                if (!newPositions) return prev;
+                
+                // Quick check: if sizes are different, definitely update
+                if (prev.size !== newPositions.size) return newPositions;
+                
+                // Check if any position actually changed
+                let hasChanges = false;
+                newPositions.forEach((pos, id) => {
+                  const prevPos = prev.get(id);
+                  if (!prevPos || prevPos.x !== pos.x || prevPos.y !== pos.y) {
+                    hasChanges = true;
+                  }
+                });
+                
+                return hasChanges ? newPositions : prev;
+              });
               pendingDragPositionsRef.current = null;
             }
             dragUpdateRafRef.current = null;
           });
+        });
+
+        // Subscribe to real-time selection drag updates (for 10+ shape drags)
+        unsubscribeSelectionDrag = subscribeToSelectionDrags('global-canvas-v1', (selections) => {
+          setSelectionDrags(selections);
         });
 
       } catch (error) {
@@ -183,6 +211,9 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       }
       if (unsubscribeDrag) {
         unsubscribeDrag();
+      }
+      if (unsubscribeSelectionDrag) {
+        unsubscribeSelectionDrag();
       }
       // Cancel any pending drag RAF
       if (dragUpdateRafRef.current !== null) {
@@ -298,6 +329,28 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
           throw error;
         }
       }
+    },
+    [currentUser]
+  );
+
+  /**
+   * Updates multiple shapes at once (batch update for local state only)
+   * OPTIMIZATION: Prevents multiple React re-renders by batching all updates into one state change
+   * @param updates - Array of {id, updates} objects to update
+   */
+  const updateShapesBatchLocal = useCallback(
+    (updates: Array<{ id: string; updates: Partial<Shape> }>) => {
+      if (!currentUser || updates.length === 0) return;
+
+      // Single state update for all shapes
+      setLocalUpdates((prev) => {
+        const newMap = new Map(prev);
+        updates.forEach(({ id, updates: shapeUpdates }) => {
+          const existing = newMap.get(id) || {};
+          newMap.set(id, { ...existing, ...shapeUpdates });
+        });
+        return newMap;
+      });
     },
     [currentUser]
   );
@@ -676,7 +729,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
     [currentUser, shapes]
   );
 
-  // Merge real-time drag positions and local updates with persistent shapes
+  // Merge real-time drag positions, selection drags, and local updates with persistent shapes
   // Memoized to prevent unnecessary re-renders - only recompute when dependencies change
   // CRITICAL: Only create new objects for shapes that actually changed to maintain referential equality
   const shapesWithDragPositions = useMemo(() => {
@@ -685,25 +738,85 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       const dragPos = dragPositions.get(shape.id);
       const isDraggedByOther = dragPos && dragPos.draggingBy !== currentUser?.uid;
       
+      // Check if this shape is in a selection drag by another user
+      const activeSelectionDragArray: Array<{
+        deltaX: number;
+        deltaY: number;
+        initialPos: { x: number; y: number; x1?: number; y1?: number; x2?: number; y2?: number };
+      }> = [];
+      
+      selectionDrags.forEach((drag) => {
+        // Only apply selection drag from other users
+        // NOTE: shapeIds may be undefined during partial updates (delta-only)
+        if (drag.userId !== currentUser?.uid && drag.shapeIds?.includes(shape.id)) {
+          const initialPos = drag.initialPositions?.[shape.id];
+          if (initialPos) {
+            activeSelectionDragArray.push({
+              deltaX: drag.deltaX,
+              deltaY: drag.deltaY,
+              initialPos,
+            });
+          }
+        }
+      });
+      
+      const activeSelectionDrag = activeSelectionDragArray[0] || null;
+      
       // Apply drag positions ONLY from other users (not our own)
       // Local updates handle our own dragging for instant feedback
       const shouldApplyDragPos = isDraggedByOther;
+      const shouldApplySelectionDrag = activeSelectionDrag !== null;
       
       // If no updates for this shape, return the original reference (prevents unnecessary re-renders)
-      if (!localUpdate && !shouldApplyDragPos) {
+      if (!localUpdate && !shouldApplyDragPos && !shouldApplySelectionDrag) {
         return shape;
       }
       
       // Start with shape data
       let mergedShape: Shape = shape;
       
-      // Apply local updates if they exist
-      if (localUpdate) {
+      // Apply selection drag delta (PRIORITY: This takes precedence)
+      if (activeSelectionDrag) {
+        const deltaX = activeSelectionDrag.deltaX;
+        const deltaY = activeSelectionDrag.deltaY;
+        const initialPos = activeSelectionDrag.initialPos;
+        
+        // Calculate new position from initial position + delta (LOCAL CALCULATION)
+        if (shape.type === 'line') {
+          // Lines use x1, y1, x2, y2
+          if (initialPos.x1 !== undefined && initialPos.y1 !== undefined &&
+              initialPos.x2 !== undefined && initialPos.y2 !== undefined) {
+            const newX1 = initialPos.x1 + deltaX;
+            const newY1 = initialPos.y1 + deltaY;
+            const newX2 = initialPos.x2 + deltaX;
+            const newY2 = initialPos.y2 + deltaY;
+            
+            mergedShape = {
+              ...mergedShape,
+              x1: newX1,
+              y1: newY1,
+              x2: newX2,
+              y2: newY2,
+            } as Shape;
+          }
+        } else {
+          // Regular shapes use x, y
+          const newX = initialPos.x + deltaX;
+          const newY = initialPos.y + deltaY;
+          
+          mergedShape = {
+            ...mergedShape,
+            x: newX,
+            y: newY,
+          } as Shape;
+        }
+      }
+      // Apply local updates if they exist (only if not in selection drag)
+      else if (localUpdate) {
         mergedShape = { ...mergedShape, ...localUpdate } as Shape;
       }
-      
       // Apply drag positions (from other users OR current user for lines)
-      if (shouldApplyDragPos && dragPos) {
+      else if (shouldApplyDragPos && dragPos) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const baseUpdates: any = {
           ...mergedShape,
@@ -758,7 +871,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       
       return mergedShape;
     });
-  }, [shapes, dragPositions, localUpdates, currentUser?.uid]);
+  }, [shapes, dragPositions, selectionDrags, localUpdates, currentUser?.uid]);
 
   // Memoize the context value to prevent unnecessary re-renders of consumers
   const value: CanvasContextType = useMemo(
@@ -768,8 +881,10 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       loading,
       currentTool,
       selectionRect,
+      selectionDrags,
       addShape,
       updateShape,
+      updateShapesBatchLocal,
       deleteShape,
       deleteShapes,
       selectShape,
@@ -788,8 +903,10 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       loading,
       currentTool,
       selectionRect,
+      selectionDrags,
       addShape,
       updateShape,
+      updateShapesBatchLocal,
       deleteShape,
       deleteShapes,
       selectShape,

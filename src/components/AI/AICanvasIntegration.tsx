@@ -17,9 +17,11 @@ interface AICanvasIntegrationProps {
   onOpenPanel?: () => void;
   initialMessage?: string;
   forceOpen?: boolean;
+  viewportCenter?: { x: number; y: number };
+  viewportBounds?: { minX: number; maxX: number; minY: number; maxY: number };
 }
 
-export function AICanvasIntegration({ onOpenPanel, initialMessage, forceOpen }: AICanvasIntegrationProps) {
+export function AICanvasIntegration({ onOpenPanel, initialMessage, forceOpen, viewportCenter, viewportBounds }: AICanvasIntegrationProps) {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [toastMessages, setToastMessages] = useState<ToastMessage[]>([]);
@@ -75,7 +77,12 @@ export function AICanvasIntegration({ onOpenPanel, initialMessage, forceOpen }: 
 
     try {
       // Send message to OpenAI with conversation history
-      const aiResponse = await sendAICommand(message, shapes, history);
+      const aiResponse = await sendAICommand(message, shapes, history, {
+        viewport: viewportCenter && viewportBounds ? {
+          center: viewportCenter,
+          bounds: viewportBounds,
+        } : undefined,
+      });
 
       // Execute tool calls
       if (aiResponse.toolCalls.length > 0) {

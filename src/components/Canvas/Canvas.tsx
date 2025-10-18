@@ -4,16 +4,19 @@
  * Uses Konva for high-performance 2D rendering
  */
 
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { Stage, Layer, Rect, Circle, Line } from 'react-konva';
 import type Konva from 'konva';
 import { useCanvasContext } from '../../contexts/CanvasContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { usePresenceContext } from '../../contexts/PresenceContext';
 import {
   CANVAS_WIDTH,
   CANVAS_HEIGHT,
+  CANVAS_BOUNDS,
   DEFAULT_SHAPE_FILL,
   DEFAULT_SHAPE_STROKE,
+  MAX_ZOOM,
 } from '../../utils/constants';
 import { updateCursorPosition } from '../../services/presence';
 import { screenToCanvas, normalizeRectangle, rectanglesIntersect, circleIntersectsRect, lineIntersectsRect } from '../../utils/helpers';
@@ -30,6 +33,7 @@ import { useCanvasPanZoom } from '../../hooks/useCanvasPanZoom';
 import { useShapeDrawing } from '../../hooks/useShapeDrawing';
 import { useTextEditing } from '../../hooks/useTextEditing';
 import { useShapeInteraction } from '../../hooks/useShapeInteraction';
+import { useViewportCulling } from '../../hooks/useViewportCulling';
 import type { TextShape, ShapeUpdate, SelectionRect as SelectionRectType } from '../../types';
 
 // ============================================================================
@@ -49,8 +53,14 @@ import type { TextShape, ShapeUpdate, SelectionRect as SelectionRectType } from 
  */
 const CURSOR_THROTTLE_MS = 0; // 0 = use RAF (~16ms on 60Hz)
 
-export function Canvas() {
+interface CanvasProps {
+  onSetNavigateToUser?: (fn: (userId: string) => void) => void;
+}
+
+export function Canvas({ onSetNavigateToUser }: CanvasProps = {}) {
   const stageRef = useRef<Konva.Stage | null>(null);
+  // Store Konva node references for direct position updates (bypassing React)
+  const shapeNodesRef = useRef<Map<string, Konva.Node>>(new Map());
   const containerRef = useRef<HTMLDivElement | null>(null);
   
   // Calculate initial size based on viewport - full size since panels are absolute
@@ -75,8 +85,24 @@ export function Canvas() {
   const lastCursorUpdateRef = useRef<number>(0);
   const pendingCursorUpdateRef = useRef<{ x: number; y: number } | null>(null);
 
-  const { shapes, selectedIds, selectShape, selectMultipleShapes, addShape, updateShape, deleteShape, deleteShapes, reorderShapes, duplicateShapes, loading, currentTool, setCurrentTool, clearLocalUpdates } = useCanvasContext();
+  const { shapes, selectedIds, selectShape, selectMultipleShapes, addShape, updateShape, updateShapesBatchLocal, deleteShape, deleteShapes, reorderShapes, duplicateShapes, loading, currentTool, setCurrentTool, clearLocalUpdates } = useCanvasContext();
+  
+  // Callback to register Konva nodes for direct updates
+  const registerShapeNode = useCallback((shapeId: string, node: Konva.Node | null) => {
+    if (node) {
+      shapeNodesRef.current.set(shapeId, node);
+    } else {
+      shapeNodesRef.current.delete(shapeId);
+    }
+  }, []);
   const { currentUser } = useAuth();
+  const { onlineUsers } = usePresenceContext();
+  
+  // Use ref to track latest onlineUsers without causing callback recreations
+  const onlineUsersRef = useRef(onlineUsers);
+  useEffect(() => {
+    onlineUsersRef.current = onlineUsers;
+  }, [onlineUsers]);
 
   const selectedShapes = shapes.filter(s => selectedIds.includes(s.id));
   const selectedShape = selectedShapes.length === 1 ? selectedShapes[0] : null;
@@ -85,6 +111,8 @@ export function Canvas() {
   const {
     stageScale,
     stagePosition,
+    setStageScale,
+    setStagePosition,
     isPanning,
     handleWheel,
     handlePanStart,
@@ -94,6 +122,30 @@ export function Canvas() {
     handleZoomOut,
     handleResetView,
   } = useCanvasPanZoom({ stageRef, stageSize });
+
+  // Viewport Culling Hook - only render visible shapes for performance
+  const { visibleShapes, cullingStats } = useViewportCulling({
+    shapes,
+    stagePosition,
+    stageScale,
+    stageSize,
+    bufferMultiplier: 2, // Render 2x viewport in each direction (5x5 grid total)
+  });
+
+  // Memoize selected IDs Set for O(1) lookups instead of O(n) includes()
+  const selectedIdsSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  
+  // Memoize non-selected visible shapes for efficient rendering
+  const nonSelectedVisibleShapes = useMemo(() => {
+    return visibleShapes.filter(shape => !selectedIdsSet.has(shape.id));
+  }, [visibleShapes, selectedIdsSet]);
+  
+  // Memoize selected shapes Map for O(1) lookups instead of O(n) find()
+  const shapesMap = useMemo(() => {
+    const map = new Map<string, typeof shapes[0]>();
+    shapes.forEach(shape => map.set(shape.id, shape));
+    return map;
+  }, [shapes]);
 
   // Shape Drawing Hook
   const {
@@ -150,9 +202,11 @@ export function Canvas() {
     currentUserId: currentUser?.uid,
     currentUserName: currentUser?.displayName || 'Unknown User',
     updateShape,
+    updateShapesBatchLocal,
     selectedIds,
     shapes,
     clearLocalUpdates,
+    shapeNodesRef,
   });
 
   /**
@@ -177,7 +231,13 @@ export function Canvas() {
       if (containerRef.current) {
         const width = containerRef.current.offsetWidth;
         const height = containerRef.current.offsetHeight;
-        setStageSize({ width, height });
+        setStageSize(prev => {
+          // Only update if dimensions actually changed
+          if (Math.abs(prev.width - width) < 0.5 && Math.abs(prev.height - height) < 0.5) {
+            return prev; // Return same reference to prevent re-render
+          }
+          return { width, height };
+        });
       }
     };
 
@@ -366,6 +426,7 @@ export function Canvas() {
   /**
    * Handle box selection end - find and select intersecting shapes
    * ⚡ ATOMIC: Selects all shapes at once to prevent race conditions
+   * NOTE: Box selection checks all shapes, not just visible ones
    */
   const handleSelectionEnd = useCallback(async () => {
     if (!isSelecting || !selectionRect || !currentUser) {
@@ -376,6 +437,7 @@ export function Canvas() {
     }
 
     // Find all shapes that intersect with the selection rectangle
+    // Use ALL shapes (not just visible ones) for selection
     const intersectingShapes = shapes.filter((shape) => {
       // Skip locked shapes by other users (selectMultipleShapes will also filter)
       if (shape.isLocked && shape.lockedBy && shape.lockedBy !== currentUser.uid) {
@@ -446,6 +508,85 @@ export function Canvas() {
   const handleToggleGrid = useCallback(() => {
     setShowGrid((prev) => !prev);
   }, []);
+
+  /**
+   * Navigate to a shape - zoom and pan to center it in viewport
+   */
+  const handleNavigateToShape = useCallback((shapeId: string) => {
+    const shape = shapes.find(s => s.id === shapeId);
+    if (!shape || !stageRef.current) return;
+
+    // Calculate shape center and bounds
+    let shapeX = 0, shapeY = 0, shapeWidth = 0, shapeHeight = 0;
+
+    if (shape.type === 'rectangle' || shape.type === 'text') {
+      shapeX = shape.x;
+      shapeY = shape.y;
+      shapeWidth = shape.width || 100;
+      shapeHeight = shape.type === 'rectangle' ? (shape.height || 100) : (shape.fontSize || 16);
+    } else if (shape.type === 'circle') {
+      shapeX = shape.x - shape.radius;
+      shapeY = shape.y - shape.radius;
+      shapeWidth = shape.radius * 2;
+      shapeHeight = shape.radius * 2;
+    } else if (shape.type === 'line') {
+      shapeX = Math.min(shape.x1, shape.x2);
+      shapeY = Math.min(shape.y1, shape.y2);
+      shapeWidth = Math.abs(shape.x2 - shape.x1);
+      shapeHeight = Math.abs(shape.y2 - shape.y1);
+    }
+
+    // Calculate zoom to fit shape with 20% padding
+    const paddingFactor = 1.4; // 20% padding on each side = 1.4x total
+    const scaleX = stageSize.width / (shapeWidth * paddingFactor);
+    const scaleY = stageSize.height / (shapeHeight * paddingFactor);
+    const newScale = Math.min(scaleX, scaleY, MAX_ZOOM); // Don't exceed max zoom
+
+    // Calculate center of shape
+    const shapeCenterX = shapeX + shapeWidth / 2;
+    const shapeCenterY = shapeY + shapeHeight / 2;
+
+    // Calculate new stage position to center the shape
+    const newX = stageSize.width / 2 - shapeCenterX * newScale;
+    const newY = stageSize.height / 2 - shapeCenterY * newScale;
+
+    // Set position and zoom immediately
+    setStageScale(newScale);
+    setStagePosition({ x: newX, y: newY });
+
+    // Select the shape
+    selectShape(shapeId);
+  }, [shapes, stageSize, selectShape, setStageScale, setStagePosition]);
+
+  /**
+   * Navigate to a user - pan to their cursor position
+   * Exposed via props for Navbar to use
+   */
+  const handleNavigateToUser = useCallback((userId: string) => {
+    // Use ref to get latest users without causing callback recreations
+    const user = onlineUsersRef.current.find(u => u.uid === userId);
+    if (!user || !stageRef.current) return;
+
+    // User cursor is in canvas coordinates
+    const userX = user.cursorX;
+    const userY = user.cursorY;
+
+    // Calculate new stage position to center the user's cursor
+    const newX = stageSize.width / 2 - userX * stageScale;
+    const newY = stageSize.height / 2 - userY * stageScale;
+
+    // Pan to user's cursor position
+    setStagePosition({ x: newX, y: newY });
+  }, [stageSize, stageScale, setStagePosition]);
+
+  /**
+   * Expose navigation function to parent via callback
+   */
+  useEffect(() => {
+    if (onSetNavigateToUser) {
+      onSetNavigateToUser(handleNavigateToUser);
+    }
+  }, [handleNavigateToUser, onSetNavigateToUser]);
 
   /**
    * Keyboard shortcuts
@@ -582,6 +723,16 @@ export function Canvas() {
         initialMessage={aiPanelMessage} 
         forceOpen={aiPanelOpen}
         onOpenPanel={() => setAIPanelOpen(false)}
+        viewportCenter={{
+          x: -stagePosition.x / stageScale + stageSize.width / (2 * stageScale),
+          y: -stagePosition.y / stageScale + stageSize.height / (2 * stageScale),
+        }}
+        viewportBounds={{
+          minX: -stagePosition.x / stageScale,
+          maxX: (-stagePosition.x + stageSize.width) / stageScale,
+          minY: -stagePosition.y / stageScale,
+          maxY: (-stagePosition.y + stageSize.height) / stageScale,
+        }}
       />
       
       {/* Layers Panel - Absolute positioned, full height */}
@@ -592,6 +743,8 @@ export function Canvas() {
           onSelectShape={selectShape}
           onReorderShapes={reorderShapes}
           currentUserId={currentUser?.uid}
+          cullingStats={cullingStats}
+          onNavigateToShape={handleNavigateToShape}
         />
       </div>
 
@@ -721,10 +874,10 @@ export function Canvas() {
           style={{ cursor: getCursorStyle() }}
         >
           <Layer>
-            {/* Canvas background */}
+            {/* Canvas background - full 100k x 100k canvas (0 to 100,000) */}
             <Rect
-              x={0}
-              y={0}
+              x={CANVAS_BOUNDS.MIN_X}
+              y={CANVAS_BOUNDS.MIN_Y}
               width={CANVAS_WIDTH}
               height={CANVAS_HEIGHT}
               fill="white"
@@ -734,32 +887,39 @@ export function Canvas() {
               listening={false}
             />
 
-            {/* Grid lines */}
-            {renderGrid({ showGrid })}
+            {/* Grid lines - viewport-based rendering */}
+            {renderGrid({ 
+              showGrid,
+              viewport: {
+                minX: -stagePosition.x / stageScale,
+                maxX: (-stagePosition.x + stageSize.width) / stageScale,
+                minY: -stagePosition.y / stageScale,
+                maxY: (-stagePosition.y + stageSize.height) / stageScale,
+              }
+            })}
 
-            {/* Render non-selected shapes first */}
-            {shapes
-              .filter(shape => !selectedIds.includes(shape.id))
-              .map((shape) => (
-                <Shape
-                  key={shape.id}
-                  shape={shape}
-                  isSelected={false}
-                  onSelect={(shiftKey) => selectShape(shape.id, shiftKey)}
-                  onDragStart={() => handleShapeDragStart(shape.id)}
-                  onDragMove={(x, y) => handleShapeDragMove(shape.id, x, y)}
-                  onDragEnd={(x, y) => handleShapeDragEnd(shape.id, x, y)}
-                  onTransformEnd={(updates) => handleShapeTransformEnd(shape.id, updates)}
-                  onTransform={(x, y, rotation, width, height, radius, fontSize, x1, y1, x2, y2) => handleShapeTransform(shape.id, x, y, rotation, width, height, radius, fontSize, x1, y1, x2, y2)}
-                  isDraggable={currentTool === 'select'}
-                  currentUserId={currentUser?.uid}
-                  onDoubleClick={shape.type === 'text' ? () => handleTextDoubleClick(shape) : undefined}
-                />
-              ))}
+            {/* Render non-selected shapes first - using viewport culling */}
+            {nonSelectedVisibleShapes.map((shape) => (
+              <Shape
+                key={shape.id}
+                shape={shape}
+                isSelected={false}
+                onSelect={(shiftKey) => selectShape(shape.id, shiftKey)}
+                onDragStart={() => handleShapeDragStart(shape.id)}
+                onDragMove={(x, y) => handleShapeDragMove(shape.id, x, y)}
+                onDragEnd={(x, y) => handleShapeDragEnd(shape.id, x, y)}
+                onTransformEnd={(updates) => handleShapeTransformEnd(shape.id, updates)}
+                onTransform={(x, y, rotation, width, height, radius, fontSize, x1, y1, x2, y2) => handleShapeTransform(shape.id, x, y, rotation, width, height, radius, fontSize, x1, y1, x2, y2)}
+                isDraggable={currentTool === 'select'}
+                currentUserId={currentUser?.uid}
+                onDoubleClick={shape.type === 'text' ? () => handleTextDoubleClick(shape) : undefined}
+                stageScale={stageScale}
+              />
+            ))}
 
-            {/* Render selected shapes last (on top) with selection indicators */}
+            {/* Render selected shapes last (on top) - always render even if off-screen */}
             {selectedIds.map(selectedId => {
-              const shape = shapes.find(s => s.id === selectedId);
+              const shape = shapesMap.get(selectedId);
               if (!shape) return null;
               
               return (
@@ -777,6 +937,8 @@ export function Canvas() {
                   isDraggable={currentTool === 'select'}
                   currentUserId={currentUser?.uid}
                   onDoubleClick={shape.type === 'text' ? () => handleTextDoubleClick(shape as TextShape) : undefined}
+                  onNodeRef={registerShapeNode}
+                  stageScale={stageScale}
                 />
               );
             })}
@@ -844,6 +1006,9 @@ export function Canvas() {
 
             {/* Multiplayer Cursors - isolated to prevent Canvas re-renders */}
             <CursorsLayer scale={stageScale} />
+
+            {/* Selection drag visualization: All users see actual shapes moving
+                No need for separate indicators since shapes are updated with delta in real-time */}
           </Layer>
         </Stage>
 

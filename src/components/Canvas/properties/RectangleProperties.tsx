@@ -43,28 +43,28 @@ function RectanglePropertiesComponent({
     <>
       {/* Size */}
       <div>
-        <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Size</div>
+        <div className="text-xs text-theme-secondary uppercase tracking-wide mb-2">Size</div>
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="text-xs text-gray-600 mb-1 block">W</label>
+            <label className="text-xs text-theme-primary mb-1 block">W</label>
             <input
               type="number"
               value={Math.round(shape.width)}
               onChange={(e) => onUpdate({ width: parseInt(e.target.value) || 10 }, true)}
               onBlur={(e) => onUpdate({ width: parseInt(e.target.value) || 10 }, false)}
               disabled={isLockedByOther}
-              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+              className="w-full px-2 py-1 text-sm bg-theme-surface text-theme-primary border border-theme rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-theme-surface-hover disabled:cursor-not-allowed"
             />
           </div>
           <div>
-            <label className="text-xs text-gray-600 mb-1 block">H</label>
+            <label className="text-xs text-theme-primary mb-1 block">H</label>
             <input
               type="number"
               value={Math.round(shape.height)}
               onChange={(e) => onUpdate({ height: parseInt(e.target.value) || 10 }, true)}
               onBlur={(e) => onUpdate({ height: parseInt(e.target.value) || 10 }, false)}
               disabled={isLockedByOther}
-              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+              className="w-full px-2 py-1 text-sm bg-theme-surface text-theme-primary border border-theme rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-theme-surface-hover disabled:cursor-not-allowed"
             />
           </div>
         </div>
@@ -72,7 +72,7 @@ function RectanglePropertiesComponent({
 
       {/* Corner Radius */}
       <div>
-        <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Corner Radius</div>
+        <div className="text-xs text-theme-secondary uppercase tracking-wide mb-2">Corner Radius</div>
         <div className="flex items-center gap-2">
           <input
             type="range"
@@ -93,7 +93,7 @@ function RectanglePropertiesComponent({
             onChange={(e) => throttledUpdate({ cornerRadius: parseInt(e.target.value) || 0 })}
             onBlur={(e) => onUpdate({ cornerRadius: parseInt(e.target.value) || 0 }, false)}
             disabled={isLockedByOther}
-            className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+            className="w-16 px-2 py-1 text-sm bg-theme-surface text-theme-primary border border-theme rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-theme-surface-hover disabled:cursor-not-allowed"
           />
         </div>
       </div>
@@ -101,7 +101,7 @@ function RectanglePropertiesComponent({
       {/* Fill Color */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <div className="text-xs text-gray-500 uppercase tracking-wide">Fill</div>
+          <div className="text-xs text-theme-secondary uppercase tracking-wide">Fill</div>
           <label className="flex items-center gap-1 cursor-pointer">
             <input
               type="checkbox"
@@ -110,7 +110,7 @@ function RectanglePropertiesComponent({
               disabled={isLockedByOther}
               className="w-3 h-3 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed"
             />
-            <span className="text-xs text-gray-600">Visible</span>
+            <span className="text-xs text-theme-primary">Visible</span>
           </label>
         </div>
         {hasFill && (
@@ -121,7 +121,7 @@ function RectanglePropertiesComponent({
               onChange={(e) => onFillColorChange(e.target.value)}
               onBlur={onFillColorBlur}
               disabled={isLockedByOther}
-              className="w-12 h-10 rounded border border-gray-300 cursor-pointer disabled:cursor-not-allowed"
+              className="w-12 h-10 rounded border border-theme cursor-pointer disabled:cursor-not-allowed"
             />
             <input
               type="text"
@@ -129,18 +129,18 @@ function RectanglePropertiesComponent({
               onChange={(e) => onFillColorChange(e.target.value)}
               onBlur={onFillColorBlur}
               disabled={isLockedByOther}
-              className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono uppercase disabled:bg-gray-100 disabled:cursor-not-allowed"
+              className="flex-1 px-2 py-1 text-sm bg-theme-surface text-theme-primary border border-theme rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono uppercase disabled:bg-theme-surface-hover disabled:cursor-not-allowed"
               placeholder="#000000"
             />
           </div>
         )}
-        {!hasFill && <div className="text-xs text-gray-400 italic">Transparent</div>}
+        {!hasFill && <div className="text-xs text-theme-secondary opacity-70 italic">Transparent</div>}
       </div>
 
       {/* Stroke Color */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <div className="text-xs text-gray-500 uppercase tracking-wide">Stroke</div>
+          <div className="text-xs text-theme-secondary uppercase tracking-wide">Stroke</div>
           <label className="flex items-center gap-1 cursor-pointer">
             <input
               type="checkbox"
@@ -149,7 +149,7 @@ function RectanglePropertiesComponent({
               disabled={isLockedByOther}
               className="w-3 h-3 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed"
             />
-            <span className="text-xs text-gray-600">Visible</span>
+            <span className="text-xs text-theme-primary">Visible</span>
           </label>
         </div>
         {hasStroke && (
@@ -160,7 +160,7 @@ function RectanglePropertiesComponent({
               onChange={(e) => onStrokeColorChange(e.target.value)}
               onBlur={onStrokeColorBlur}
               disabled={isLockedByOther}
-              className="w-12 h-10 rounded border border-gray-300 cursor-pointer disabled:cursor-not-allowed"
+              className="w-12 h-10 rounded border border-theme cursor-pointer disabled:cursor-not-allowed"
             />
             <input
               type="text"
@@ -168,18 +168,18 @@ function RectanglePropertiesComponent({
               onChange={(e) => onStrokeColorChange(e.target.value)}
               onBlur={onStrokeColorBlur}
               disabled={isLockedByOther}
-              className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono uppercase disabled:bg-gray-100 disabled:cursor-not-allowed"
+              className="flex-1 px-2 py-1 text-sm bg-theme-surface text-theme-primary border border-theme rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono uppercase disabled:bg-theme-surface-hover disabled:cursor-not-allowed"
               placeholder="#000000"
             />
           </div>
         )}
-        {!hasStroke && <div className="text-xs text-gray-400 italic">No stroke</div>}
+        {!hasStroke && <div className="text-xs text-theme-secondary opacity-70 italic">No stroke</div>}
       </div>
 
       {/* Stroke Width */}
       {hasStroke && (
         <div>
-          <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Stroke Width</div>
+          <div className="text-xs text-theme-secondary uppercase tracking-wide mb-2">Stroke Width</div>
           <div className="flex items-center gap-2">
             <input
               type="range"
@@ -200,7 +200,7 @@ function RectanglePropertiesComponent({
               onChange={(e) => throttledUpdate({ strokeWidth: parseInt(e.target.value) || 0 })}
               onBlur={(e) => onUpdate({ strokeWidth: parseInt(e.target.value) || 0 }, false)}
               disabled={isLockedByOther}
-              className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+              className="w-16 px-2 py-1 text-sm bg-theme-surface text-theme-primary border border-theme rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-theme-surface-hover disabled:cursor-not-allowed"
             />
           </div>
         </div>

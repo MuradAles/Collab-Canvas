@@ -6,7 +6,7 @@
 import { useCallback, useRef, useState } from 'react';
 import type Konva from 'konva';
 import type { Shape, LineShape } from '../types';
-import { CANVAS_WIDTH, CANVAS_HEIGHT } from '../utils/constants';
+import { CANVAS_BOUNDS } from '../utils/constants';
 import { constrainRectangle } from '../utils/helpers';
 
 interface UseShapeHandlersProps {
@@ -40,7 +40,7 @@ interface UseShapeHandlersProps {
     x2?: number,
     y2?: number
   ) => void;
-  shapeRef: React.RefObject<Konva.Rect | Konva.Circle | Konva.Text | null>;
+  shapeRef: React.RefObject<Konva.Rect | Konva.Circle | Konva.Text | Konva.Group | null>;
 }
 
 export function useShapeHandlers({
@@ -88,19 +88,19 @@ export function useShapeHandlers({
 
       if (shape.type === 'rectangle') {
         const constrained = constrainRectangle(x, y, shape.width, shape.height, {
-          minX: 0,
-          minY: 0,
-          maxX: CANVAS_WIDTH,
-          maxY: CANVAS_HEIGHT,
+          minX: CANVAS_BOUNDS.MIN_X,
+          minY: CANVAS_BOUNDS.MIN_Y,
+          maxX: CANVAS_BOUNDS.MAX_X,
+          maxY: CANVAS_BOUNDS.MAX_Y,
         });
         constrainedX = constrained.x;
         constrainedY = constrained.y;
       } else if (shape.type === 'circle') {
-        constrainedX = Math.max(shape.radius, Math.min(CANVAS_WIDTH - shape.radius, x));
-        constrainedY = Math.max(shape.radius, Math.min(CANVAS_HEIGHT - shape.radius, y));
+        constrainedX = Math.max(CANVAS_BOUNDS.MIN_X + shape.radius, Math.min(CANVAS_BOUNDS.MAX_X - shape.radius, x));
+        constrainedY = Math.max(CANVAS_BOUNDS.MIN_Y + shape.radius, Math.min(CANVAS_BOUNDS.MAX_Y - shape.radius, y));
       } else {
-        constrainedX = Math.max(0, Math.min(CANVAS_WIDTH - 100, x));
-        constrainedY = Math.max(0, Math.min(CANVAS_HEIGHT - 50, y));
+        constrainedX = Math.max(CANVAS_BOUNDS.MIN_X, Math.min(CANVAS_BOUNDS.MAX_X - 100, x));
+        constrainedY = Math.max(CANVAS_BOUNDS.MIN_Y, Math.min(CANVAS_BOUNDS.MAX_Y - 50, y));
       }
 
       onDragEnd(constrainedX, constrainedY);
@@ -280,9 +280,15 @@ export function useShapeHandlers({
     (anchorType: 'start' | 'end', e: Konva.KonvaEventObject<DragEvent>) => {
       if (shape.type !== 'line') return;
       const lineShape = shape as LineShape;
-      const circle = e.target as Konva.Circle;
-      const newX = circle.x();
-      const newY = circle.y();
+      const anchor = e.target as Konva.Rect;
+      
+      // Anchor is positioned with top-left at (x - offset, y - offset)
+      // So we need to add offset to get the center position
+      // Anchor width changes with scale, so read it directly from the element
+      const anchorWidth = anchor.width();
+      const anchorOffset = anchorWidth / 2;
+      const newX = anchor.x() + anchorOffset;
+      const newY = anchor.y() + anchorOffset;
 
       const currentX1 = anchorType === 'start' ? newX : lineShape.x1;
       const currentY1 = anchorType === 'start' ? newY : lineShape.y1;
@@ -297,9 +303,15 @@ export function useShapeHandlers({
 
   const handleAnchorDragEnd = useCallback(
     (anchorType: 'start' | 'end', e: Konva.KonvaEventObject<DragEvent>) => {
-      const circle = e.target as Konva.Circle;
-      const newX = circle.x();
-      const newY = circle.y();
+      const anchor = e.target as Konva.Rect;
+      
+      // Anchor is positioned with top-left at (x - offset, y - offset)
+      // So we need to add offset to get the center position
+      // Anchor width changes with scale, so read it directly from the element
+      const anchorWidth = anchor.width();
+      const anchorOffset = anchorWidth / 2;
+      const newX = anchor.x() + anchorOffset;
+      const newY = anchor.y() + anchorOffset;
 
       const updates: { x1?: number; y1?: number; x2?: number; y2?: number } = {};
 

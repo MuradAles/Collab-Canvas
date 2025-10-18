@@ -44,22 +44,22 @@ export function Tutorial() {
   }, [isOpen]);
 
   return (
-    <div ref={dropdownRef} className="relative flex flex-col items-end">
-      {/* Tutorial Dropdown - Opens above and to the right of button */}
+    <div ref={dropdownRef} className="relative flex flex-col items-center">
+      {/* Tutorial Dropdown - Opens to the right of button, extending upward */}
       {isOpen && (
-        <div className="absolute bottom-12 right-0 w-64 bg-white bg-opacity-95 rounded-lg shadow-lg border border-gray-200 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-200">
+        <div className="absolute left-full ml-2 bottom-0 w-64 bg-theme-surface bg-opacity-95 rounded-lg shadow-lg border border-theme overflow-hidden animate-in fade-in slide-in-from-left-2 duration-200 backdrop-blur-sm">
           {/* Header */}
-          <div className="bg-gray-50 px-3 py-2 border-b border-gray-200">
-            <h3 className="text-sm font-semibold text-gray-700">Keyboard Shortcuts</h3>
+          <div className="bg-theme-surface-hover px-3 py-2 border-b border-theme">
+            <h3 className="text-sm font-semibold text-theme-primary">Keyboard Shortcuts</h3>
           </div>
 
           {/* Shortcuts List */}
-          <div className="max-h-80 overflow-y-auto">
+          <div className="max-h-96 overflow-y-auto scrollbar-thin">
             <div className="px-3 py-2 space-y-1.5">
               {shortcuts.map((shortcut, idx) => (
                 <div key={idx} className="flex items-center justify-between text-xs py-1.5">
-                  <span className="text-gray-600">{shortcut.description}</span>
-                  <kbd className="px-2 py-0.5 text-xs font-semibold text-gray-700 bg-gray-100 border border-gray-300 rounded">
+                  <span className="text-theme-secondary">{shortcut.description}</span>
+                  <kbd className="px-2 py-0.5 text-xs font-semibold text-theme-primary bg-theme-surface-hover border border-theme rounded">
                     {shortcut.key}
                   </kbd>
                 </div>
@@ -72,11 +72,10 @@ export function Tutorial() {
       {/* Tutorial Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-10 h-10 flex items-center justify-center rounded hover:bg-gray-100 transition-colors"
-        title="Keyboard Shortcuts"
+        className="w-10 h-10 flex items-center justify-center rounded hover:bg-theme-surface-hover transition-colors"
       >
         <svg
-          className="w-5 h-5 text-gray-700"
+          className="w-5 h-5 text-theme-primary"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"

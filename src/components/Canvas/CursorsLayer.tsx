@@ -4,6 +4,7 @@
  * Subscribes to PresenceContext separately to prevent Canvas re-renders
  */
 
+import { useMemo } from 'react';
 import { Cursor } from '../Collaboration/Cursor';
 import { usePresenceContext } from '../../contexts/PresenceContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -17,17 +18,21 @@ export function CursorsLayer({ scale }: CursorsLayerProps) {
   const { onlineUsers } = usePresenceContext();
   const { currentUser } = useAuth();
   
+  // Memoize filtered users to prevent unnecessary array creation
+  const otherUsers = useMemo(() => {
+    if (!currentUser) return onlineUsers;
+    return onlineUsers.filter((user) => user.uid !== currentUser.uid && user.isOnline);
+  }, [onlineUsers, currentUser]);
+  
   return (
     <>
-      {onlineUsers
-        .filter((user) => user.uid !== currentUser?.uid && user.isOnline)
-        .map((user) => (
-          <Cursor
-            key={user.uid}
-            user={user}
-            scale={scale}
-          />
-        ))}
+      {otherUsers.map((user) => (
+        <Cursor
+          key={user.uid}
+          user={user}
+          scale={scale}
+        />
+      ))}
     </>
   );
 }

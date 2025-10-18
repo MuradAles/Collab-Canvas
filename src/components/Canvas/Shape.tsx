@@ -51,6 +51,8 @@ interface ShapeProps {
   isDraggable: boolean;
   currentUserId?: string;
   onDoubleClick?: () => void;
+  onNodeRef?: (shapeId: string, node: Konva.Node | null) => void;
+  stageScale?: number;
 }
 
 function ShapeComponent({
@@ -66,8 +68,10 @@ function ShapeComponent({
   isDraggable,
   currentUserId,
   onDoubleClick,
+  onNodeRef,
+  stageScale = 1,
 }: ShapeProps) {
-  const shapeRef = useRef<Konva.Rect | Konva.Circle | Konva.Text | null>(null);
+  const shapeRef = useRef<Konva.Rect | Konva.Circle | Konva.Text | Konva.Group | null>(null);
 
   // Use custom hook for all event handlers
   const {
@@ -91,6 +95,16 @@ function ShapeComponent({
     onTransform,
     shapeRef,
   });
+
+  // Register shape node for direct updates
+  useEffect(() => {
+    if (onNodeRef && shapeRef.current) {
+      onNodeRef(shape.id, shapeRef.current);
+      return () => {
+        onNodeRef(shape.id, null);
+      };
+    }
+  }, [shape.id, onNodeRef]);
 
   // Update shape node rotation when it changes from external sources
   useEffect(() => {
@@ -245,6 +259,7 @@ function ShapeComponent({
     return (
       <>
         <LineShapeComponent
+          ref={shapeRef as React.RefObject<Konva.Group>}
           shape={lineShape}
           isSelected={isSelected}
           canDrag={canDrag}
@@ -256,6 +271,7 @@ function ShapeComponent({
           onLineDragEnd={handleLineDragEnd}
           onAnchorDrag={handleAnchorDrag}
           onAnchorDragEnd={handleAnchorDragEnd}
+          stageScale={stageScale}
         />
         <ShapeIndicators
           shape={shape}
@@ -275,6 +291,7 @@ export const Shape = memo(ShapeComponent, (prevProps, nextProps) => {
   if (prevProps.isSelected !== nextProps.isSelected) return false;
   if (prevProps.isDraggable !== nextProps.isDraggable) return false;
   if (prevProps.currentUserId !== nextProps.currentUserId) return false;
+  if (prevProps.stageScale !== nextProps.stageScale) return false;
 
   const prev = prevProps.shape;
   const next = nextProps.shape;
