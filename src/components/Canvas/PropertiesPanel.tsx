@@ -187,7 +187,7 @@ function PropertiesPanelComponent({
           title="Expand properties panel"
         >
           <svg
-            className="w-4 h-4 text-theme-secondary rotate-180 transition-transform duration-300 ease-in-out"
+            className="w-4 h-4 text-theme-secondary transition-transform duration-300 ease-in-out"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -208,16 +208,16 @@ function PropertiesPanelComponent({
         className="h-full bg-theme-surface border-l border-theme p-4 overflow-y-auto panel-width-transition properties-panel-width-expanded"
       >
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-theme-primary uppercase tracking-wide">Properties</h3>
           <button
             onClick={() => setIsCollapsed(true)}
             className="p-1 hover:bg-theme-surface-hover rounded transition-colors"
             title="Collapse panel"
           >
             <svg className="w-4 h-4 text-theme-secondary transition-transform duration-300 ease-in-out" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
           </button>
+          <h3 className="text-sm font-semibold text-theme-primary uppercase tracking-wide">Properties</h3>
         </div>
         <div className="text-center text-theme-secondary text-sm mt-8 transition-all duration-300 ease-in-out">
           {selectedCount > 1 ? (
@@ -267,16 +267,16 @@ function PropertiesPanelComponent({
       className="h-full bg-theme-surface border-l border-theme p-4 overflow-y-auto panel-width-transition properties-panel-width-expanded scrollbar-thin"
     >
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-theme-primary uppercase tracking-wide">Properties</h3>
         <button
           onClick={() => setIsCollapsed(true)}
           className="p-1 hover:bg-theme-surface-hover rounded transition-colors"
           title="Collapse panel"
         >
           <svg className="w-4 h-4 text-theme-secondary transition-transform duration-300 ease-in-out" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
         </button>
+        <h3 className="text-sm font-semibold text-theme-primary uppercase tracking-wide">Properties</h3>
       </div>
 
       {/* Lock Warning */}

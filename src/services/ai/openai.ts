@@ -6,6 +6,23 @@
 import OpenAI from 'openai';
 import type { Shape } from '../../types';
 
+// ============================================================================
+// Configuration
+// ============================================================================
+
+// AI Model Configuration - Change via env or per-call override
+const DEFAULT_AI_MODEL = import.meta.env.VITE_OPENAI_MODEL || 'gpt-4o-mini';
+
+// Non-authoritative suggestions; actual availability depends on your API access
+export const SUGGESTED_MODELS = [
+  'gpt-5',
+  'gpt-5-mini',
+  'gpt-4.1',
+  'gpt-4.1-mini',
+  'gpt-4o',
+  'gpt-4o-mini',
+];
+
 // OpenAI client for development only (production uses server-side /api/ai-command.js)
 // Only instantiate in development to avoid "Missing credentials" error in production
 let openai: OpenAI | null = null;
@@ -388,6 +405,8 @@ export async function sendAICommand(
       center: { x: number; y: number };
       bounds: { minX: number; maxX: number; minY: number; maxY: number };
     };
+    // Optional per-call model override
+    model?: string;
   }
 ): Promise<AIResponse> {
   const debugInfo: string[] = [];
@@ -484,6 +503,8 @@ ${canvasContext}`,
       }>;
     };
     let response: ChatCompletionLike;
+    const chosenModel = extras?.model || DEFAULT_AI_MODEL;
+    debugInfo.push(`[OpenAI] Model: ${chosenModel}`);
     
     if (import.meta.env.DEV) {
       // Development: Use client-side OpenAI (API key exposed but only locally)
@@ -492,7 +513,7 @@ ${canvasContext}`,
       }
       debugInfo.push(`[OpenAI] Using client-side call (development mode)`);
       response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: chosenModel,
         temperature: 0.3,
         messages,
         tools,
@@ -507,7 +528,7 @@ ${canvasContext}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: chosenModel,
           temperature: 0.3,
           messages,
           tools,

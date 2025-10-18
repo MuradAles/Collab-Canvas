@@ -27,7 +27,8 @@ export async function executeToolCalls(
   toolCalls: ToolCall[],
   canvasContext: CanvasContextType,
   _currentUser: User,
-  shapes: Shape[]
+  shapes: Shape[],
+  extras?: { viewport?: { center: { x: number; y: number }; bounds: { minX: number; maxX: number; minY: number; maxY: number } } }
 ): Promise<ExecutionResult> {
   const debugLog: string[] = [];
   const errors: string[] = [];
@@ -63,7 +64,15 @@ export async function executeToolCalls(
 
       switch (toolCall.function.name) {
         case 'createShape': {
-          const result = await executeCreateShape(params, canvasContext, shapes, debugLog);
+          const result = await executeCreateShape(
+            params,
+            canvasContext,
+            shapes,
+            debugLog,
+            extras?.viewport
+              ? { center: extras.viewport.center, bounds: extras.viewport.bounds }
+              : undefined
+          );
           if (result.shapeId) {
             createdShapeIds.push(result.shapeId);
             successCount++;
@@ -74,7 +83,15 @@ export async function executeToolCalls(
         }
 
         case 'moveShape': {
-          const result = await executeMoveShape(params, canvasContext, shapes, debugLog);
+          const result = await executeMoveShape(
+            params,
+            canvasContext,
+            shapes,
+            debugLog,
+            extras?.viewport
+              ? { center: extras.viewport.center, bounds: extras.viewport.bounds }
+              : undefined
+          );
           if (result.success) {
             successCount++;
           } else if (result.error) {

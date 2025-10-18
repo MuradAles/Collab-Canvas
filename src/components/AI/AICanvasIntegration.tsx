@@ -19,9 +19,21 @@ interface AICanvasIntegrationProps {
   forceOpen?: boolean;
   viewportCenter?: { x: number; y: number };
   viewportBounds?: { minX: number; maxX: number; minY: number; maxY: number };
+  isChatExpanded?: boolean;
+  isDebugMode?: boolean;
+  onChatExpandedChange?: (expanded: boolean) => void;
+  onDebugModeChange?: (debug: boolean) => void;
 }
 
-export function AICanvasIntegration({ onOpenPanel, initialMessage, forceOpen, viewportCenter, viewportBounds }: AICanvasIntegrationProps) {
+export function AICanvasIntegration({ 
+  onOpenPanel, 
+  initialMessage, 
+  forceOpen, 
+  viewportCenter, 
+  viewportBounds,
+  isChatExpanded = false,
+  isDebugMode = false,
+}: AICanvasIntegrationProps) {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [toastMessages, setToastMessages] = useState<ToastMessage[]>([]);
@@ -90,7 +102,13 @@ export function AICanvasIntegration({ onOpenPanel, initialMessage, forceOpen, vi
           aiResponse.toolCalls,
           canvasContext,
           currentUser,
-          shapes
+          shapes,
+          {
+            viewport: viewportCenter && viewportBounds ? {
+              center: viewportCenter,
+              bounds: viewportBounds,
+            } : undefined,
+          }
         );
 
         // Record request for rate limiting
@@ -182,25 +200,32 @@ export function AICanvasIntegration({ onOpenPanel, initialMessage, forceOpen, vi
     return unsubscribe;
   }, [currentUser]);
 
-  // Open panel when initialMessage is provided or forceOpen is true
+  // Sync panel state with forceOpen prop
   useEffect(() => {
-    if (initialMessage !== undefined || forceOpen) {
+    if (forceOpen) {
+      setIsPanelOpen(true);
+    } else {
+      setIsPanelOpen(false);
+    }
+  }, [forceOpen]);
+
+  // Open panel when initialMessage is provided
+  useEffect(() => {
+    if (initialMessage !== undefined) {
       setIsPanelOpen(true);
     }
-  }, [initialMessage, forceOpen]);
+  }, [initialMessage]);
 
   return (
     <>
       {/* AI Panel */}
       <AIPanel
         isOpen={isPanelOpen}
-        onClose={() => {
-          setIsPanelOpen(false);
-          onOpenPanel?.();  // Notify parent that panel is closed
-        }}
         onSendMessage={handleSendMessage}
         isLoading={isLoading}
         initialMessage={panelMessage}
+        isChatExpanded={isChatExpanded}
+        isDebugMode={isDebugMode}
       />
 
       {/* Toast Notifications */}
@@ -211,6 +236,9 @@ export function AICanvasIntegration({ onOpenPanel, initialMessage, forceOpen, vi
     </>
   );
 }
+
+// Export state setters for ToolSelector to use
+export { AICanvasIntegration as default };
 
 // Hook for using AI integration in other components
 export function useAIIntegration() {

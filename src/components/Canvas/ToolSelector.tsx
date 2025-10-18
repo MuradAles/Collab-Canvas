@@ -5,7 +5,6 @@
 
 import type { ReactNode } from 'react';
 import { ShapeDropdown, type ShapeTool } from './ShapeDropdown';
-import { Tutorial } from './Tutorial';
 import type { Tool } from '../../types';
 
 export type { Tool };
@@ -14,9 +13,21 @@ interface ToolSelectorProps {
   selectedTool: Tool;
   onToolChange: (tool: Tool) => void;
   onOpenAIPanel?: () => void;
+  isAIPanelOpen?: boolean;
+  isChatExpanded?: boolean;
+  onToggleChatExpanded?: () => void;
+  onShowAICommands?: () => void;
 }
 
-export function ToolSelector({ selectedTool, onToolChange, onOpenAIPanel }: ToolSelectorProps) {
+export function ToolSelector({ 
+  selectedTool, 
+  onToolChange, 
+  onOpenAIPanel,
+  isAIPanelOpen = false,
+  isChatExpanded = false,
+  onToggleChatExpanded,
+  onShowAICommands
+}: ToolSelectorProps) {
   const isShapeTool = selectedTool === 'rectangle' || selectedTool === 'circle' || selectedTool === 'line';
   
   const tools: { id: 'select' | 'text'; label: string; icon: ReactNode; shortcut: string }[] = [
@@ -47,12 +58,33 @@ export function ToolSelector({ selectedTool, onToolChange, onOpenAIPanel }: Tool
 
   return (
     <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-10">
-      <div className="bg-theme-surface border border-theme rounded-lg shadow-lg p-2 flex gap-1 items-center">
+      <style>{`
+        @keyframes expandWidth {
+          from {
+            width: 0px;
+            padding-left: 0;
+            padding-right: 0;
+            opacity: 0;
+          }
+          to {
+            width: 44px;
+            padding-left: 0;
+            padding-right: 0;
+            opacity: 1;
+          }
+        }
+      `}</style>
+      <div 
+        className="bg-theme-surface border border-theme rounded-lg shadow-lg p-2 flex gap-1 items-center"
+        style={{
+          transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+        }}
+      >
         {/* Select Tool */}
         <button
           onClick={() => onToolChange('select')}
           className={`
-            relative group px-3 py-2 rounded-md transition-all duration-200
+            relative group w-11 h-11 rounded-md transition-all duration-200
             flex items-center justify-center
             ${
               selectedTool === 'select'
@@ -62,7 +94,7 @@ export function ToolSelector({ selectedTool, onToolChange, onOpenAIPanel }: Tool
           `}
         >
           {tools[0].icon}
-          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block">
+          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-50">
             <div className="bg-gray-900 dark:bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap backdrop-blur-sm">
               Select
               <kbd className="ml-2 px-1 bg-gray-700 dark:bg-gray-900 rounded text-xs">V</kbd>
@@ -82,7 +114,7 @@ export function ToolSelector({ selectedTool, onToolChange, onOpenAIPanel }: Tool
         <button
           onClick={() => onToolChange('text')}
           className={`
-            relative group px-3 py-2 rounded-md transition-all duration-200
+            relative group w-11 h-11 rounded-md transition-all duration-200
             flex items-center justify-center
             ${
               selectedTool === 'text'
@@ -92,7 +124,7 @@ export function ToolSelector({ selectedTool, onToolChange, onOpenAIPanel }: Tool
           `}
         >
           {tools[1].icon}
-          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block">
+          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-50">
             <div className="bg-gray-900 dark:bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap backdrop-blur-sm">
               Text
               <kbd className="ml-2 px-1 bg-gray-700 dark:bg-gray-900 rounded text-xs">T</kbd>
@@ -104,12 +136,16 @@ export function ToolSelector({ selectedTool, onToolChange, onOpenAIPanel }: Tool
         {onOpenAIPanel && (
           <button
             onClick={onOpenAIPanel}
-            className="relative group px-3 py-2 rounded-md transition-all duration-200 flex items-center justify-center bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:from-blue-600 hover:to-purple-700 hover:scale-110"
+            className={`relative group w-11 h-11 rounded-md transition-all duration-200 flex items-center justify-center ${
+              isAIPanelOpen
+                ? 'bg-blue-600 text-white'
+                : 'bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:from-blue-600 hover:to-purple-700'
+            }`}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
             </svg>
-            <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block">
+            <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-50">
               <div className="bg-gray-900 dark:bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap backdrop-blur-sm">
                 AI Assistant
                 <kbd className="ml-2 px-1 bg-gray-700 dark:bg-gray-900 rounded text-xs">/</kbd>
@@ -118,8 +154,65 @@ export function ToolSelector({ selectedTool, onToolChange, onOpenAIPanel }: Tool
           </button>
         )}
 
-        {/* Tutorial Button */}
-        <Tutorial />
+        {/* Chat History Button - Only shows when AI panel is open */}
+        {onToggleChatExpanded && (
+          <div className="relative group">
+            <button
+              onClick={onToggleChatExpanded}
+              className={`h-11 rounded-md flex items-center justify-center overflow-hidden ${
+                isChatExpanded
+                  ? 'bg-blue-600 text-white'
+                  : 'hover:bg-theme-surface-hover text-theme-primary'
+              }`}
+              style={{
+                width: isAIPanelOpen ? '44px' : '0px',
+                opacity: isAIPanelOpen ? 1 : 0,
+                transition: 'width 0.3s ease-out 0.05s, opacity 0.3s ease-out 0.05s',
+                paddingLeft: 0,
+                paddingRight: 0,
+              }}
+            >
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+              </svg>
+            </button>
+            {isAIPanelOpen && (
+              <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-[1100] pointer-events-none">
+                <div className="bg-gray-900 dark:bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap backdrop-blur-sm">
+                  Chat History
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* AI Commands Button - Only shows when AI panel is open */}
+        {onShowAICommands && (
+          <div className="relative group">
+            <button
+              onClick={onShowAICommands}
+              className="h-11 rounded-md flex items-center justify-center overflow-hidden hover:bg-theme-surface-hover text-theme-primary"
+              style={{
+                width: isAIPanelOpen ? '44px' : '0px',
+                opacity: isAIPanelOpen ? 1 : 0,
+                transition: 'width 0.3s ease-out 0.1s, opacity 0.3s ease-out 0.1s',
+                paddingLeft: 0,
+                paddingRight: 0,
+              }}
+            >
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </button>
+            {isAIPanelOpen && (
+              <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-[1100] pointer-events-none">
+                <div className="bg-gray-900 dark:bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap backdrop-blur-sm">
+                  AI Commands
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
       </div>
     </div>

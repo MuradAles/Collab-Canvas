@@ -53,7 +53,7 @@ export function ZIndexControls({
   // Convert canvas coordinates to screen coordinates
   const screenCenterX = shapeCenterX * stageScale + stagePosition.x;
   const screenCenterY = shapeCenterY * stageScale + stagePosition.y;
-  const screenY = screenCenterY + estimatedRadius * stageScale + 60;
+  const screenY = screenCenterY + estimatedRadius * stageScale + 20;
 
   // Get current index
   const currentIndex = shapes.findIndex(s => s.id === selectedShape.id);

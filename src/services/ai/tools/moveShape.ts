@@ -5,7 +5,7 @@
 
 import type { Shape, CanvasContextType } from '../../../types';
 import type { MoveShapeParams } from '../types/toolTypes';
-import { parsePosition, findShapeByName } from '../positionParser';
+import { parsePosition, findShapeByName, type PositionViewportInfo } from '../positionParser';
 import { CANVAS_BOUNDS } from '../../../utils/constants';
 
 /**
@@ -15,7 +15,8 @@ export async function executeMoveShape(
   params: MoveShapeParams,
   canvasContext: CanvasContextType,
   shapes: Shape[],
-  debugLog: string[]
+  debugLog: string[],
+  viewport?: PositionViewportInfo
 ): Promise<{ success: boolean; error?: string }> {
   try {
     // Find the shape by ID (preferred) or name
@@ -47,7 +48,14 @@ export async function executeMoveShape(
       shapeHeight = radius * 2;
     }
     
-    const positionResult = parsePosition(params.position, shapes, shapeWidth, shapeHeight);
+    const positionResult = parsePosition(
+      params.position,
+      shapes,
+      shapeWidth,
+      shapeHeight,
+      viewport,
+      { forceWithinViewport: true, defaultToViewportCenter: false }
+    );
     
     if (!positionResult.position) {
       const error = positionResult.error || 'Invalid position';
