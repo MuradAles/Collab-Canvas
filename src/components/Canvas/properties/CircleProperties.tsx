@@ -5,6 +5,7 @@
 
 import { memo } from 'react';
 import type { CircleShape } from '../../../types';
+import { RecentColors } from '../RecentColors';
 
 interface CirclePropertiesProps {
   shape: CircleShape;
@@ -93,6 +94,16 @@ function CirclePropertiesComponent({
         {!hasFill && <div className="text-xs text-theme-secondary opacity-70 italic">Transparent</div>}
       </div>
 
+      {/* Recent Colors for Fill */}
+      {hasFill && (
+        <RecentColors
+          currentColor={localFillColor}
+          onColorSelect={onFillColorChange}
+          onColorBlur={onFillColorBlur}
+          disabled={isLockedByOther}
+        />
+      )}
+
       {/* Stroke Color */}
       <div>
         <div className="flex items-center justify-between mb-2">
@@ -131,6 +142,16 @@ function CirclePropertiesComponent({
         )}
         {!hasStroke && <div className="text-xs text-theme-secondary opacity-70 italic">No stroke</div>}
       </div>
+
+      {/* Recent Colors for Stroke */}
+      {hasStroke && (
+        <RecentColors
+          currentColor={localStrokeColor}
+          onColorSelect={onStrokeColorChange}
+          onColorBlur={onStrokeColorBlur}
+          disabled={isLockedByOther}
+        />
+      )}
 
       {/* Stroke Width */}
       {hasStroke && (

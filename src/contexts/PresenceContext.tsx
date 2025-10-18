@@ -67,6 +67,9 @@ export function PresenceProvider({ children }: PresenceProviderProps) {
                 
                 // Only update if users actually changed
                 setOnlineUsers(prevUsers => {
+                  // Skip update if we don't have new data
+                  if (!newUsers) return prevUsers;
+                  
                   // Quick length check
                   if (prevUsers.length !== newUsers.length) {
                     return newUsers;
@@ -76,14 +79,16 @@ export function PresenceProvider({ children }: PresenceProviderProps) {
                   const prevUsersMap = new Map(prevUsers.map(u => [u.uid, u]));
                   
                   // Check if any user data changed
+                  let hasChanges = false;
                   for (const newUser of newUsers) {
                     const prevUser = prevUsersMap.get(newUser.uid);
                     
                     if (!prevUser) {
-                      return newUsers; // New user added
+                      hasChanges = true;
+                      break;
                     }
                     
-                    // Check if any field changed (using bitwise OR for early exit)
+                    // Check if any field changed
                     if (
                       prevUser.cursorX !== newUser.cursorX ||
                       prevUser.cursorY !== newUser.cursorY ||
@@ -91,12 +96,13 @@ export function PresenceProvider({ children }: PresenceProviderProps) {
                       prevUser.color !== newUser.color ||
                       prevUser.isOnline !== newUser.isOnline
                     ) {
-                      return newUsers;
+                      hasChanges = true;
+                      break;
                     }
                   }
                   
-                  // Nothing changed, return previous reference
-                  return prevUsers;
+                  // Return new users only if there are changes
+                  return hasChanges ? newUsers : prevUsers;
                 });
               }
             });

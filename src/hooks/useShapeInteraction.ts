@@ -19,7 +19,6 @@ interface UseShapeInteractionProps {
   currentUserId?: string;
   currentUserName?: string;
   updateShape: (id: string, updates: Partial<Shape>, localOnly?: boolean) => Promise<void>;
-  updateShapesBatchLocal: (updates: Array<{ id: string; updates: Partial<Shape> }>) => void;
   selectedIds: string[];
   shapes: Shape[];
   clearLocalUpdates: (shapeIds: string[]) => void;
@@ -33,7 +32,6 @@ export function useShapeInteraction({
   currentUserId,
   currentUserName,
   updateShape,
-  updateShapesBatchLocal,
   selectedIds,
   shapes,
   clearLocalUpdates,
@@ -62,6 +60,10 @@ export function useShapeInteraction({
   
   // Firebase throttling (60 FPS) - local updates are native RAF speed
   const lastFirebaseUpdateRef = useRef<number>(0);
+  
+  // Multi-shape operation throttling to prevent performance issues
+  const multiShapeThrottleRef = useRef<number>(0);
+  const MULTI_SHAPE_THROTTLE_MS = 100; // 10 FPS for multi-shape operations
   
   // Track initial positions of all selected shapes for group drag
   // For lines, store endpoints; for others, store x, y
@@ -242,15 +244,15 @@ export function useShapeInteraction({
                         const newX2 = initialShapePos.x2! + deltaX;
                         const newY2 = initialShapePos.y2! + deltaY;
                         
-                        const lineChildren = (node as any).find('Line');
+                        const lineChildren = (node as Konva.Group).find('Line');
                         if (lineChildren && lineChildren.length > 0) {
-                          lineChildren.forEach((lineChild: any) => {
-                            lineChild.points([newX1, newY1, newX2, newY2]);
+                          lineChildren.forEach((lineChild) => {
+                            (lineChild as Konva.Line).points([newX1, newY1, newX2, newY2]);
                           });
                         }
                         
                         // CRITICAL FIX: Also update anchor positions (the Rect elements)
-                        const anchorRects = (node as any).find('Rect');
+                        const anchorRects = (node as Konva.Group).find('Rect');
                         if (anchorRects && anchorRects.length >= 2) {
                           // Get anchor size to calculate offset
                           const anchorSize = anchorRects[0].width();
@@ -277,7 +279,7 @@ export function useShapeInteraction({
               }
             }
           } else if (isMultiDrag) {
-            // INDIVIDUAL DRAG MODE (< threshold shapes) - Still throttled to 50ms
+            // INDIVIDUAL DRAG MODE (< threshold shapes) - Throttled for performance
             // Calculate delta from initial position
             const initialPos = initialPositionsRef.current.get(pending.shapeId);
             if (initialPos) {
@@ -287,7 +289,9 @@ export function useShapeInteraction({
               // Throttle Firebase to 60 FPS, local Konva updates at native RAF
               const now = Date.now();
               const timeSinceLastFirebaseUpdate = now - lastFirebaseUpdateRef.current;
+              const timeSinceMultiShapeUpdate = now - multiShapeThrottleRef.current;
               const shouldSendToFirebase = timeSinceLastFirebaseUpdate >= FIREBASE_THROTTLE_MS;
+              const shouldUpdateMultiShape = timeSinceMultiShapeUpdate >= MULTI_SHAPE_THROTTLE_MS;
               
               const rtdbUpdates: Promise<void>[] = [];
               const localStateUpdates: Array<{ id: string; updates: Partial<Shape> }> = [];
@@ -378,24 +382,27 @@ export function useShapeInteraction({
               }
               
               // CRITICAL: Update OTHER shapes via Konva directly for instant movement
+              // But throttle multi-shape updates to prevent performance issues
               const shapeNodes = shapeNodesRef.current;
-              if (shapeNodes && localStateUpdates.length > 0) {
+              if (shapeNodes && localStateUpdates.length > 0 && shouldUpdateMultiShape) {
+                multiShapeThrottleRef.current = now;
                 localStateUpdates.forEach(({ id, updates }) => {
                   const node = shapeNodes.get(id);
                   if (node) {
                     // Direct Konva update - instant!
-                    const u = updates as any;
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const u = updates as any; // Use any for complex shape updates with mixed types
                     if (u.x1 !== undefined && u.y1 !== undefined && u.x2 !== undefined && u.y2 !== undefined) {
                       // For lines: node is a Group, find the Line children and update their points
-                      const lineChildren = (node as any).find('Line');
+                      const lineChildren = (node as Konva.Group).find('Line');
                       if (lineChildren && lineChildren.length > 0) {
-                        lineChildren.forEach((lineChild: any) => {
-                          lineChild.points([u.x1, u.y1, u.x2, u.y2]);
+                        lineChildren.forEach((lineChild) => {
+                          (lineChild as Konva.Line).points([u.x1, u.y1, u.x2, u.y2]);
                         });
                       }
                       
                       // CRITICAL FIX: Also update anchor positions (the Rect elements)
-                      const anchorRects = (node as any).find('Rect');
+                      const anchorRects = (node as Konva.Group).find('Rect');
                       if (anchorRects && anchorRects.length >= 2) {
                         // Get anchor size to calculate offset
                         const anchorSize = anchorRects[0].width();
@@ -494,7 +501,7 @@ export function useShapeInteraction({
         dragRafRef.current = null;
       });
     },
-    [currentUserId, currentUserName, updateShape, updateShapesBatchLocal]
+    [currentUserId, currentUserName, updateShape, shapeNodesRef]
   );
 
   /**
@@ -634,7 +641,7 @@ export function useShapeInteraction({
         console.error('Failed to update shape:', error);
       }
     },
-    [currentUserId, currentUserName, updateShape, updateCurrentCursorPosition, selectedIds]
+    [currentUserId, currentUserName, updateShape, updateCurrentCursorPosition, selectedIds, clearLocalUpdates]
   );
 
   /**

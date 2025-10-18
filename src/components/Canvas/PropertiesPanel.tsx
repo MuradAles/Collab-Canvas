@@ -35,9 +35,11 @@ function PropertiesPanelComponent({
   const [localFillColor, setLocalFillColor] = useState('');
   const [localStrokeColor, setLocalStrokeColor] = useState('');
 
-  // Refs for throttling updates
+  // Refs for throttling updates and tracking latest colors
   const rafIdRef = useRef<number | null>(null);
   const pendingUpdateRef = useRef<Partial<Shape> | null>(null);
+  const latestFillColorRef = useRef<string>('');
+  const latestStrokeColorRef = useRef<string>('');
 
   // Wrapped update function that prevents updates when locked
   const safeUpdate = useCallback(
@@ -57,12 +59,16 @@ function PropertiesPanelComponent({
       setHasStroke(selectedShape.stroke !== 'transparent');
       setLocalFillColor(selectedShape.fill);
       setLocalStrokeColor(selectedShape.stroke);
+      latestFillColorRef.current = selectedShape.fill;
+      latestStrokeColorRef.current = selectedShape.stroke;
     } else if (selectedShape.type === 'text') {
       setHasFill(selectedShape.fill !== 'transparent');
       setLocalFillColor(selectedShape.fill);
+      latestFillColorRef.current = selectedShape.fill;
     } else if (selectedShape.type === 'line') {
       setHasStroke(selectedShape.stroke !== 'transparent');
       setLocalStrokeColor(selectedShape.stroke);
+      latestStrokeColorRef.current = selectedShape.stroke;
     }
   }, [selectedShape]);
 
@@ -105,39 +111,45 @@ function PropertiesPanelComponent({
   const handleFillColorChange = useCallback(
     (color: string) => {
       setLocalFillColor(color);
-      throttledUpdate({ fill: color });
+      latestFillColorRef.current = color; // Track latest color in ref
+      // Apply immediately to local canvas, then throttle to Firestore
+      safeUpdate({ fill: color }, true);
     },
-    [throttledUpdate]
+    [safeUpdate]
   );
 
   const handleFillColorBlur = useCallback(() => {
-    // Cancel any pending updates and sync final value to Firebase
+    // Cancel any pending RAF updates
     if (rafIdRef.current !== null) {
       cancelAnimationFrame(rafIdRef.current);
       rafIdRef.current = null;
     }
     pendingUpdateRef.current = null;
-    safeUpdate({ fill: localFillColor }, false);
-  }, [safeUpdate, localFillColor]);
+    // Sync final value to Firebase using the ref (always has latest value)
+    safeUpdate({ fill: latestFillColorRef.current }, false);
+  }, [safeUpdate]);
 
   // Handle stroke color change - update local state and throttle canvas update
   const handleStrokeColorChange = useCallback(
     (color: string) => {
       setLocalStrokeColor(color);
-      throttledUpdate({ stroke: color });
+      latestStrokeColorRef.current = color; // Track latest color in ref
+      // Apply immediately to local canvas, then sync to Firestore on blur
+      safeUpdate({ stroke: color }, true);
     },
-    [throttledUpdate]
+    [safeUpdate]
   );
 
   const handleStrokeColorBlur = useCallback(() => {
-    // Cancel any pending updates and sync final value to Firebase
+    // Cancel any pending RAF updates
     if (rafIdRef.current !== null) {
       cancelAnimationFrame(rafIdRef.current);
       rafIdRef.current = null;
     }
     pendingUpdateRef.current = null;
-    safeUpdate({ stroke: localStrokeColor }, false);
-  }, [safeUpdate, localStrokeColor]);
+    // Sync final value to Firebase using the ref (always has latest value)
+    safeUpdate({ stroke: latestStrokeColorRef.current }, false);
+  }, [safeUpdate]);
 
   // Handle fill toggle
   const handleFillToggle = useCallback(
@@ -145,6 +157,7 @@ function PropertiesPanelComponent({
       setHasFill(enabled);
       const newColor = enabled ? '#e0e0e0' : 'transparent';
       setLocalFillColor(newColor);
+      latestFillColorRef.current = newColor;
       onUpdate({ fill: newColor }, false); // Sync immediately
     },
     [onUpdate]
@@ -156,6 +169,7 @@ function PropertiesPanelComponent({
       setHasStroke(enabled);
       const newColor = enabled ? '#000000' : 'transparent';
       setLocalStrokeColor(newColor);
+      latestStrokeColorRef.current = newColor;
       onUpdate({ stroke: newColor }, false); // Sync immediately
     },
     [onUpdate]
@@ -164,14 +178,16 @@ function PropertiesPanelComponent({
   // Collapsed state - show a thin tab
   if (isCollapsed) {
     return (
-      <div className="w-12 h-full bg-theme-surface border-l border-theme flex flex-col items-center py-4 transition-all duration-300 ease-in-out">
+      <div 
+        className="h-full bg-theme-surface border-l border-theme flex flex-col items-center py-4 panel-width-transition properties-panel-width-collapsed"
+      >
         <button
           onClick={() => setIsCollapsed(false)}
           className="p-2 hover:bg-theme-surface-hover rounded transition-colors"
           title="Expand properties panel"
         >
           <svg
-            className="w-4 h-4 text-theme-secondary rotate-180"
+            className="w-4 h-4 text-theme-secondary rotate-180 transition-transform duration-300 ease-in-out"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -179,7 +195,7 @@ function PropertiesPanelComponent({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <div className="text-xs text-theme-secondary mt-4 [writing-mode:vertical-lr] rotate-180 uppercase tracking-wider">
+        <div className="text-xs text-theme-secondary mt-4 [writing-mode:vertical-lr] rotate-180 uppercase tracking-wider transition-all duration-300 ease-in-out">
           Properties
         </div>
       </div>
@@ -188,7 +204,9 @@ function PropertiesPanelComponent({
 
   if (!selectedShape) {
     return (
-      <div className="w-64 h-full bg-theme-surface border-l border-theme p-4 overflow-y-auto transition-all duration-300 ease-in-out">
+      <div 
+        className="h-full bg-theme-surface border-l border-theme p-4 overflow-y-auto panel-width-transition properties-panel-width-expanded"
+      >
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-theme-primary uppercase tracking-wide">Properties</h3>
           <button
@@ -196,14 +214,14 @@ function PropertiesPanelComponent({
             className="p-1 hover:bg-theme-surface-hover rounded transition-colors"
             title="Collapse panel"
           >
-            <svg className="w-4 h-4 text-theme-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-theme-secondary transition-transform duration-300 ease-in-out" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
         </div>
-        <div className="text-center text-theme-secondary text-sm mt-8">
+        <div className="text-center text-theme-secondary text-sm mt-8 transition-all duration-300 ease-in-out">
           {selectedCount > 1 ? (
-            <>
+            <div className="transition-all duration-300 ease-in-out">
               <svg
                 className="w-12 h-12 mx-auto mb-3 text-blue-400"
                 fill="none"
@@ -220,9 +238,9 @@ function PropertiesPanelComponent({
               <p className="font-medium text-blue-600 dark:text-blue-400">{selectedCount} shapes selected</p>
               <p className="text-xs mt-2 text-theme-secondary opacity-70">Multi-selection active</p>
               <p className="text-xs mt-1 text-theme-secondary opacity-70">Select a single shape to edit properties</p>
-            </>
+            </div>
           ) : (
-            <>
+            <div className="transition-all duration-300 ease-in-out">
               <svg
                 className="w-12 h-12 mx-auto mb-3 text-theme-secondary opacity-70"
                 fill="none"
@@ -237,7 +255,7 @@ function PropertiesPanelComponent({
                 />
               </svg>
               <p>Select a shape to edit its properties</p>
-            </>
+            </div>
           )}
         </div>
       </div>
@@ -245,7 +263,9 @@ function PropertiesPanelComponent({
   }
 
   return (
-    <div className="w-64 h-full bg-theme-surface border-l border-theme p-4 overflow-y-auto transition-all duration-300 ease-in-out scrollbar-thin">
+    <div 
+      className="h-full bg-theme-surface border-l border-theme p-4 overflow-y-auto panel-width-transition properties-panel-width-expanded scrollbar-thin"
+    >
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-theme-primary uppercase tracking-wide">Properties</h3>
         <button
@@ -253,7 +273,7 @@ function PropertiesPanelComponent({
           className="p-1 hover:bg-theme-surface-hover rounded transition-colors"
           title="Collapse panel"
         >
-          <svg className="w-4 h-4 text-theme-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 text-theme-secondary transition-transform duration-300 ease-in-out" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
@@ -261,7 +281,7 @@ function PropertiesPanelComponent({
 
       {/* Lock Warning */}
       {isLockedByOther && selectedShape?.lockedByName && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg transition-all duration-300 ease-in-out">
           <div className="flex items-center gap-2 text-red-800 text-sm">
             <span>🔒</span>
             <span className="font-medium">Locked by {selectedShape.lockedByName}</span>
@@ -270,9 +290,9 @@ function PropertiesPanelComponent({
         </div>
       )}
 
-      <div className="space-y-4">
+      <div className="space-y-4 transition-all duration-300 ease-in-out">
         {/* Shape Type */}
-        <div className="pb-3 border-b border-theme">
+        <div className="pb-3 border-b border-theme transition-all duration-300 ease-in-out">
           <div className="text-xs text-theme-secondary uppercase tracking-wide mb-1">Type</div>
           <div className="text-sm font-medium text-theme-primary capitalize">{selectedShape.type}</div>
         </div>
@@ -280,7 +300,7 @@ function PropertiesPanelComponent({
 
         {/* Position - Only for non-line shapes */}
         {selectedShape.type !== 'line' && (
-          <div>
+          <div className="transition-all duration-300 ease-in-out">
             <div className="text-xs text-theme-secondary uppercase tracking-wide mb-2">Position</div>
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -291,7 +311,7 @@ function PropertiesPanelComponent({
                   onChange={(e) => safeUpdate({ x: parseInt(e.target.value) || 0 }, true)}
                   onBlur={(e) => safeUpdate({ x: parseInt(e.target.value) || 0 }, false)}
                   disabled={isLockedByOther}
-                  className="w-full px-2 py-1 text-sm bg-theme-surface text-theme-primary border border-theme rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-theme-surface-hover disabled:cursor-not-allowed"
+                  className="w-full px-2 py-1 text-sm bg-theme-surface text-theme-primary border border-theme rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-theme-surface-hover disabled:cursor-not-allowed transition-all duration-200 ease-in-out"
                 />
               </div>
               <div>
@@ -302,7 +322,7 @@ function PropertiesPanelComponent({
                   onChange={(e) => safeUpdate({ y: parseInt(e.target.value) || 0 }, true)}
                   onBlur={(e) => safeUpdate({ y: parseInt(e.target.value) || 0 }, false)}
                   disabled={isLockedByOther}
-                  className="w-full px-2 py-1 text-sm bg-theme-surface text-theme-primary border border-theme rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-theme-surface-hover disabled:cursor-not-allowed"
+                  className="w-full px-2 py-1 text-sm bg-theme-surface text-theme-primary border border-theme rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-theme-surface-hover disabled:cursor-not-allowed transition-all duration-200 ease-in-out"
                 />
               </div>
             </div>

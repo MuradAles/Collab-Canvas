@@ -21,6 +21,7 @@ import {
   initializeCanvas,
   subscribeToShapes,
   createShape as createShapeInFirestore,
+  createShapesBatch as createShapesBatchInFirestore,
   updateShape as updateShapeInFirestore,
   deleteShape as deleteShapeInFirestore,
   deleteShapesBatch as deleteShapesBatchInFirestore,
@@ -53,6 +54,8 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
   const [localUpdates, setLocalUpdates] = useState<Map<string, Partial<Shape>>>(new Map());
   const [currentTool, setCurrentTool] = useState<Tool>('select');
   const [selectionRect, setSelectionRect] = useState<SelectionRect | null>(null);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'reconnecting'>('connected');
   const { currentUser } = useAuth();
   
   // RAF throttling for incoming drag updates to prevent FPS drops
@@ -104,6 +107,12 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
         unsubscribeShapes = subscribeToShapes((updatedShapes) => {
           setShapes(updatedShapes);
           setLoading(false);
+          
+          // Mark as connected when we receive data
+          if (connectionStatus !== 'connected') {
+            setConnectionStatus('connected');
+            setIsReconnecting(false);
+          }
           
           // Clear local updates for shapes that have been synced to Firestore
           // This prevents the flash by only clearing after Firebase confirms the update
@@ -199,6 +208,18 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       } catch (error) {
         console.error('Failed to setup canvas:', error);
         setLoading(false);
+        
+        // Handle connection errors
+        if (error instanceof Error && (error.message.includes('unavailable') || error.message.includes('deadline-exceeded'))) {
+          setConnectionStatus('disconnected');
+          setIsReconnecting(true);
+          
+          // Attempt reconnection after a delay
+          setTimeout(() => {
+            setConnectionStatus('reconnecting');
+            setupCanvas(); // Retry setup
+          }, 2000);
+        }
       }
     };
 
@@ -281,15 +302,42 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
         
         // Only auto-select and lock if not skipped (e.g., for AI-created shapes)
         if (!options?.skipAutoLock) {
-          // Auto-select the newly created shape (single selection)
+          // Get previously selected shapes to unlock them
+          const previousSelection = [...selectedIdsRef.current];
+          
+          // STEP 1: Unlock ALL previously selected shapes FIRST (before locking new shape)
+          if (previousSelection.length > 0) {
+            try {
+              await unlockShapesBatch(previousSelection, currentUser.uid);
+            } catch (error) {
+              console.error('Failed to unlock previous shapes:', error);
+              // Continue anyway - don't block new shape creation
+            }
+          }
+          
+          // STEP 2: Update selection state to the new shape
           setSelectedIds([newShape.id]);
-          // Lock the newly created shape for the current user
-          await lockShapeInFirestore(
-            newShape.id, 
-            currentUser.uid, 
-            currentUser.displayName || 'Unknown User'
-          );
+          // CRITICAL: Update ref immediately (synchronously) to prevent stale reads on rapid shape creation
+          selectedIdsRef.current = [newShape.id];
+          
+          // STEP 3: Lock the newly created shape for the current user
+          try {
+            await lockShapeInFirestore(
+              newShape.id, 
+              currentUser.uid, 
+              currentUser.displayName || 'Unknown User'
+            );
+            // Small delay to ensure lock is fully propagated to Firestore before next shape can be created
+            // This prevents race condition where unlock reads shape before lock completes
+            await new Promise(resolve => setTimeout(resolve, 50));
+          } catch (error) {
+            console.error('Failed to lock new shape:', error);
+            // If lock fails, clear selection
+            setSelectedIds([]);
+          }
         }
+        
+        return newShape.id; // Return the ID of the created shape
       } catch (error) {
         console.error('Failed to add shape:', error);
         throw error;
@@ -320,13 +368,27 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
 
       // If not local-only, also sync to Firebase (but keep local updates for smooth transition)
       if (!localOnly) {
-        try {
-          await updateShapeInFirestore(id, updates);
-          // Don't clear local updates immediately - let Firestore subscription handle it
-          // This prevents the flash when the update is in-flight
-        } catch (error) {
-          console.error('Failed to update shape:', error);
-          throw error;
+        const maxRetries = 3;
+        let retryCount = 0;
+        
+        while (retryCount < maxRetries) {
+          try {
+            await updateShapeInFirestore(id, updates);
+            // Don't clear local updates immediately - let Firestore subscription handle it
+            // This prevents the flash when the update is in-flight
+            return; // Success, exit retry loop
+          } catch (error) {
+            retryCount++;
+            console.warn(`Update attempt ${retryCount} failed for shape ${id}:`, error);
+            
+            if (retryCount >= maxRetries) {
+              console.error('Failed to update shape after all retries:', error);
+              throw error;
+            }
+            
+            // Wait before retry (exponential backoff)
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 100));
+          }
         }
       }
     },
@@ -438,15 +500,29 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
         throw new Error('Must be logged in to lock shapes');
       }
 
-      try {
-        await lockShapeInFirestore(id, userId, userName);
-      } catch (error) {
-        console.error('Failed to lock shape:', error);
-        // Log warning but don't interrupt user flow
-        if (error instanceof Error) {
-          console.warn('Lock operation failed:', error.message);
+      const maxRetries = 3;
+      let retryCount = 0;
+      
+      while (retryCount < maxRetries) {
+        try {
+          await lockShapeInFirestore(id, userId, userName);
+          return; // Success, exit retry loop
+        } catch (error) {
+          retryCount++;
+          console.warn(`Lock attempt ${retryCount} failed for shape ${id}:`, error);
+          
+          if (retryCount >= maxRetries) {
+            console.error('Failed to lock shape after all retries:', error);
+            // Log warning but don't interrupt user flow
+            if (error instanceof Error) {
+              console.warn('Lock operation failed:', error.message);
+            }
+            throw error;
+          }
+          
+          // Wait before retry (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 100));
         }
-        throw error;
       }
     },
     [currentUser]
@@ -491,10 +567,16 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       
       // Update state immediately
       setSelectedIds([]);
+      // CRITICAL: Update ref synchronously
+      selectedIdsRef.current = [];
       
       // ⚡ BATCH UNLOCK - all shapes unlock simultaneously for all users!
       if (shapesToUnlock.length > 0) {
-        unlockShapesBatch(shapesToUnlock, currentUser.uid).catch(console.error);
+        try {
+          await unlockShapesBatch(shapesToUnlock, currentUser.uid);
+        } catch (error) {
+          console.error('Failed to unlock shapes:', error);
+        }
       }
       return;
     }
@@ -512,43 +594,64 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       
       if (isAlreadySelected) {
         // Deselect this shape (remove from selection)
-        setSelectedIds(prev => prev.filter(shapeId => shapeId !== id));
-        // Then unlock in background (single shape, no need for batch)
-        unlockShape(id).catch(console.error);
+        const newSelection = currentSelectedIds.filter(shapeId => shapeId !== id);
+        setSelectedIds(newSelection);
+        // CRITICAL: Update ref synchronously
+        selectedIdsRef.current = newSelection;
+        // Then unlock (await to ensure it completes)
+        try {
+          await unlockShape(id);
+        } catch (error) {
+          console.error('Failed to unlock shape:', error);
+        }
       } else {
-        // Add to selection - optimistic update
-        setSelectedIds(prev => [...prev, id]);
-        // Then lock in background
-        lockShape(id, currentUser.uid, currentUser.displayName || 'Unknown')
-          .catch((error) => {
-            console.error('Failed to lock shape:', error);
-            // If lock fails, remove from selection
-            setSelectedIds(prev => prev.filter(shapeId => shapeId !== id));
-          });
+        // Add to selection - update state first
+        const newSelection = [...currentSelectedIds, id];
+        setSelectedIds(newSelection);
+        // CRITICAL: Update ref synchronously
+        selectedIdsRef.current = newSelection;
+        // Then lock the shape (await to ensure it completes)
+        try {
+          await lockShape(id, currentUser.uid, currentUser.displayName || 'Unknown');
+        } catch (error) {
+          console.error('Failed to lock shape:', error);
+          // If lock fails, remove from selection
+          const revertedSelection = currentSelectedIds;
+          setSelectedIds(revertedSelection);
+          selectedIdsRef.current = revertedSelection;
+        }
       }
     } else {
-      // Normal selection (replace current selection) - optimistic update
+      // Normal selection (replace current selection)
       const previousSelection = [...currentSelectedIds];
       
-      // Update selection state IMMEDIATELY for instant visual feedback
-      setSelectedIds([id]);
+      // First, unlock all previously selected shapes (if any) BEFORE locking new one
+      const shapesToUnlock = previousSelection.filter(shapeId => shapeId !== id);
+      if (shapesToUnlock.length > 0) {
+        try {
+          await unlockShapesBatch(shapesToUnlock, currentUser.uid);
+        } catch (error) {
+          console.error('Failed to unlock previous shapes:', error);
+        }
+      }
       
-      // Then lock/unlock in background
+      // Update selection state for visual feedback
+      setSelectedIds([id]);
+      // CRITICAL: Update ref synchronously
+      selectedIdsRef.current = [id];
+      
+      // Then lock the new shape if it wasn't already selected
       const needsLocking = !previousSelection.includes(id);
       
       if (needsLocking) {
-        lockShape(id, currentUser.uid, currentUser.displayName || 'Unknown')
-          .catch((error) => {
-            console.error('Failed to lock shape:', error);
-            // If lock fails, revert to previous selection
-            setSelectedIds(previousSelection);
-          });
-      }
-      
-      // ⚡ BATCH UNLOCK - all previous shapes unlock simultaneously for all users!
-      const shapesToUnlock = previousSelection.filter(shapeId => shapeId !== id);
-      if (shapesToUnlock.length > 0) {
-        unlockShapesBatch(shapesToUnlock, currentUser.uid).catch(console.error);
+        try {
+          await lockShape(id, currentUser.uid, currentUser.displayName || 'Unknown');
+        } catch (error) {
+          console.error('Failed to lock shape:', error);
+          // If lock fails, revert to previous selection
+          setSelectedIds(previousSelection);
+          selectedIdsRef.current = previousSelection;
+        }
       }
     }
   }, [currentUser, shapes, lockShape, unlockShape]);
@@ -592,16 +695,42 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
 
     // ⚡ ATOMIC STATE UPDATE - happens synchronously
     setSelectedIds(newSelection);
+    // CRITICAL: Update ref synchronously
+    selectedIdsRef.current = newSelection;
 
     // 🔒 BATCH LOCK/UNLOCK - all shapes update simultaneously for all users!
+    // Add retry logic for better conflict resolution during rapid edits
+    const executeWithRetry = async (operation: () => Promise<void>, operationName: string, maxRetries = 3) => {
+      let retryCount = 0;
+      while (retryCount < maxRetries) {
+        try {
+          await operation();
+          return;
+        } catch (error) {
+          retryCount++;
+          console.warn(`${operationName} attempt ${retryCount} failed:`, error);
+          if (retryCount >= maxRetries) {
+            console.error(`${operationName} failed after all retries:`, error);
+            return;
+          }
+          // Exponential backoff
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 50));
+        }
+      }
+    };
+
     Promise.all([
       shapesToLock.length > 0
-        ? lockShapesBatch(shapesToLock, currentUser.uid, currentUser.displayName || 'Unknown')
-            .catch(console.error)
+        ? executeWithRetry(
+            () => lockShapesBatch(shapesToLock, currentUser.uid, currentUser.displayName || 'Unknown'),
+            'Batch lock'
+          )
         : Promise.resolve(),
       shapesToUnlock.length > 0
-        ? unlockShapesBatch(shapesToUnlock, currentUser.uid)
-            .catch(console.error)
+        ? executeWithRetry(
+            () => unlockShapesBatch(shapesToUnlock, currentUser.uid),
+            'Batch unlock'
+          )
         : Promise.resolve(),
     ]).catch(console.error);
   }, [currentUser, shapes]);
@@ -629,6 +758,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
   /**
    * Duplicates selected shapes (PR #13)
    * Creates copies with offset positions and auto-generated names
+   * ⚡ ALL SHAPES DUPLICATE SIMULTANEOUSLY for all users (single Firestore transaction)
    * @param shapeIds - Array of shape IDs to duplicate
    * @returns Array of new shape IDs
    */
@@ -643,10 +773,16 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       }
 
       const newShapeIds: string[] = [];
+      const duplicatedShapes: Shape[] = [];
       const OFFSET = 20; // Offset in pixels for duplicate visibility
 
       try {
-        // Process each shape
+        // Calculate max zIndex for new shapes to appear on top
+        const maxZIndex = shapes.length > 0 
+          ? Math.max(...shapes.map(s => s.zIndex)) 
+          : -1;
+
+        // Process each shape and prepare for batch creation
         for (const shapeId of shapeIds) {
           const originalShape = shapes.find(s => s.id === shapeId);
           if (!originalShape) continue;
@@ -674,11 +810,6 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
             newName = `${originalShape.name} Copy`;
           }
 
-          // Calculate max zIndex for new shapes to appear on top
-          const maxZIndex = shapes.length > 0 
-            ? Math.max(...shapes.map(s => s.zIndex)) 
-            : -1;
-
           // Create duplicate shape with offset position
           let duplicateShape: Shape;
           
@@ -692,7 +823,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
               y1: originalShape.y1 + OFFSET,
               x2: originalShape.x2 + OFFSET,
               y2: originalShape.y2 + OFFSET,
-              zIndex: maxZIndex + newShapeIds.length + 1,
+              zIndex: maxZIndex + duplicatedShapes.length + 1,
               isLocked: false,
               lockedBy: null,
               lockedByName: null,
@@ -705,20 +836,23 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
               name: newName,
               x: originalShape.x + OFFSET,
               y: originalShape.y + OFFSET,
-              zIndex: maxZIndex + newShapeIds.length + 1,
+              zIndex: maxZIndex + duplicatedShapes.length + 1,
               isLocked: false,
               lockedBy: null,
               lockedByName: null,
             } as Shape;
           }
 
-          // Add to Firestore
-          await createShapeInFirestore(duplicateShape);
+          duplicatedShapes.push(duplicateShape);
           newShapeIds.push(newId);
         }
 
-        // Select the newly duplicated shapes
-        setSelectedIds(newShapeIds);
+        // ⚡ BATCH CREATE - all shapes create at once!
+        await createShapesBatchInFirestore(duplicatedShapes);
+
+        // Select the newly duplicated shapes and properly handle locking
+        // This will unlock the original shapes and lock only the new duplicates
+        await selectMultipleShapes(newShapeIds, false);
 
         return newShapeIds;
       } catch (error) {
@@ -726,7 +860,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
         throw error;
       }
     },
-    [currentUser, shapes]
+    [currentUser, shapes, selectMultipleShapes]
   );
 
   // Merge real-time drag positions, selection drags, and local updates with persistent shapes
@@ -882,6 +1016,8 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       currentTool,
       selectionRect,
       selectionDrags,
+      isReconnecting,
+      connectionStatus,
       addShape,
       updateShape,
       updateShapesBatchLocal,
@@ -904,6 +1040,8 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       currentTool,
       selectionRect,
       selectionDrags,
+      isReconnecting,
+      connectionStatus,
       addShape,
       updateShape,
       updateShapesBatchLocal,

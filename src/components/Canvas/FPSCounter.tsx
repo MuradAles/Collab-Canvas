@@ -21,7 +21,9 @@ export function FPSCounter() {
       // Update FPS every second
       if (deltaTime >= 1000) {
         const currentFPS = Math.round((frameCountRef.current * 1000) / deltaTime);
-        setFps(currentFPS);
+        
+        // Only update if FPS actually changed to prevent unnecessary re-renders
+        setFps(prevFps => prevFps === currentFPS ? prevFps : currentFPS);
         
         frameCountRef.current = 0;
         lastTimeRef.current = currentTime;
