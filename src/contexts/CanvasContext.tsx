@@ -1,7 +1,6 @@
 /**
  * Canvas Context
  * Manages canvas state including shapes, selections, and real-time Firestore sync
- * PR #5: Integrated real-time synchronization with Firestore
  */
 
 import {
@@ -9,35 +8,19 @@ import {
   useContext,
   useState,
   useRef,
-  useCallback,
   useEffect,
   useMemo,
   type ReactNode,
 } from 'react';
-import type { Shape, ShapeUpdate, CanvasContextType, LineShape, Tool, SelectionRect } from '../types';
-import { generateId } from '../utils/helpers';
+import type { Shape, CanvasContextType, Tool, SelectionRect } from '../types';
+import type { DragPosition, SelectionDrag } from '../services/dragSync';
 import { useAuth } from './AuthContext';
-import {
-  initializeCanvas,
-  subscribeToShapes,
-  createShape as createShapeInFirestore,
-  createShapesBatch as createShapesBatchInFirestore,
-  updateShape as updateShapeInFirestore,
-  deleteShape as deleteShapeInFirestore,
-  deleteShapesBatch as deleteShapesBatchInFirestore,
-  reorderShapes as reorderShapesInFirestore,
-  lockShape as lockShapeInFirestore,
-  unlockShape as unlockShapeInFirestore,
-  lockShapesBatch,
-  unlockShapesBatch,
-  cleanupUserLocks,
-} from '../services/canvas';
-import {
-  subscribeToDragPositions,
-  subscribeToSelectionDrags,
-  type DragPosition,
-  type SelectionDrag,
-} from '../services/dragSync';
+import { useCanvasInitialization } from '../hooks/canvas-context/useCanvasInitialization';
+import { useShapeOperations } from '../hooks/canvas-context/useShapeOperations';
+import { useShapeLocking } from '../hooks/canvas-context/useShapeLocking';
+import { useShapeSelection } from '../hooks/canvas-context/useShapeSelection';
+import { useShapeReordering } from '../hooks/canvas-context/useShapeReordering';
+import { useDragSync } from '../hooks/canvas-context/useDragSync';
 
 const CanvasContext = createContext<CanvasContextType | null>(null);
 
@@ -58,10 +41,6 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'reconnecting'>('connected');
   const { currentUser } = useAuth();
   
-  // RAF throttling for incoming drag updates to prevent FPS drops
-  const dragUpdateRafRef = useRef<number | null>(null);
-  const pendingDragPositionsRef = useRef<Map<string, DragPosition> | null>(null);
-  
   // Counter for shape names (increments and never resets)
   const shapeCounterRef = useRef<{ [key: string]: number }>({
     rectangle: 0,
@@ -70,944 +49,75 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
     line: 0,
   });
   
-  // Store current user ID in a ref for cleanup (persists even after currentUser becomes null)
-  const currentUserIdRef = useRef<string | null>(null);
-  
-  // CRITICAL FIX: Store selectedIds in a ref to avoid stale closure issues
-  // When clicking shapes quickly, the callback might have old selectedIds captured
+  // Store selectedIds in a ref to avoid stale closure issues
   const selectedIdsRef = useRef<string[]>(selectedIds);
-  
-  // Update the ref whenever currentUser changes
-  useEffect(() => {
-    currentUserIdRef.current = currentUser?.uid || null;
-  }, [currentUser]);
   
   // Update selectedIds ref whenever it changes
   useEffect(() => {
     selectedIdsRef.current = selectedIds;
   }, [selectedIds]);
 
-  // ============================================================================
   // Initialize Canvas and Subscribe to Real-Time Updates
-  // ============================================================================
-
-  useEffect(() => {
-    if (!currentUser) return;
-
-    let unsubscribeShapes: (() => void) | null = null;
-    let unsubscribeDrag: (() => void) | null = null;
-    let unsubscribeSelectionDrag: (() => void) | null = null;
-
-    const setupCanvas = async () => {
-      try {
-        // Initialize canvas document in Firestore
-        await initializeCanvas();
-
-        // Subscribe to real-time shape updates (persistent state from Firestore)
-        unsubscribeShapes = subscribeToShapes((updatedShapes) => {
-          setShapes(updatedShapes);
-          setLoading(false);
-          
-          // Mark as connected when we receive data
-          if (connectionStatus !== 'connected') {
-            setConnectionStatus('connected');
-            setIsReconnecting(false);
-          }
-          
-          // Clear local updates for shapes that have been synced to Firestore
-          // This prevents the flash by only clearing after Firebase confirms the update
-          setLocalUpdates((prev) => {
-            const newMap = new Map(prev);
-            updatedShapes.forEach((shape) => {
-              // If we have local updates for this shape, check if Firestore has caught up
-              const localUpdate = prev.get(shape.id);
-              if (localUpdate) {
-                // Clear local updates if Firestore data matches our local changes
-                // (with some tolerance for floating point precision)
-                let allMatch = true;
-                for (const key in localUpdate) {
-                  const localVal = localUpdate[key as keyof typeof localUpdate];
-                  const firestoreVal = shape[key as keyof typeof shape];
-                  if (typeof localVal === 'number' && typeof firestoreVal === 'number') {
-                    if (Math.abs(localVal - firestoreVal) > 0.01) {
-                      allMatch = false;
-                      break;
-                    }
-                  } else if (localVal !== firestoreVal) {
-                    allMatch = false;
-                    break;
-                  }
-                }
-                if (allMatch) {
-                  newMap.delete(shape.id);
-                }
-              }
-            });
-            return newMap;
-          });
-          
-          // Update shape counters based on existing shapes
-          const counters = { rectangle: 0, circle: 0, text: 0, line: 0 };
-          updatedShapes.forEach((shape) => {
-            const match = shape.name.match(/(\d+)$/);
-            if (match) {
-              const num = parseInt(match[1], 10);
-              if (num > counters[shape.type]) {
-                counters[shape.type] = num;
-              }
-            }
-          });
-          shapeCounterRef.current = counters;
-        });
-
-        // Subscribe to real-time drag positions (ephemeral state from RTDB for <100ms sync)
-        // Throttled with RAF to prevent FPS drops when other users drag
-        unsubscribeDrag = subscribeToDragPositions('global-canvas-v1', (positions) => {
-          // Cancel any pending RAF
-          if (dragUpdateRafRef.current !== null) {
-            cancelAnimationFrame(dragUpdateRafRef.current);
-          }
-          
-          // Store the latest positions
-          pendingDragPositionsRef.current = positions;
-          
-          // Schedule update on next frame (max 60fps)
-          dragUpdateRafRef.current = requestAnimationFrame(() => {
-            if (pendingDragPositionsRef.current) {
-              // Use functional update to avoid dependency on dragPositions state
-              setDragPositions(prev => {
-                // Only update if positions actually changed
-                const newPositions = pendingDragPositionsRef.current;
-                if (!newPositions) return prev;
-                
-                // Quick check: if sizes are different, definitely update
-                if (prev.size !== newPositions.size) return newPositions;
-                
-                // Check if any position actually changed
-                let hasChanges = false;
-                newPositions.forEach((pos, id) => {
-                  const prevPos = prev.get(id);
-                  if (!prevPos || prevPos.x !== pos.x || prevPos.y !== pos.y) {
-                    hasChanges = true;
-                  }
-                });
-                
-                return hasChanges ? newPositions : prev;
-              });
-              pendingDragPositionsRef.current = null;
-            }
-            dragUpdateRafRef.current = null;
-          });
-        });
-
-        // Subscribe to real-time selection drag updates (for 10+ shape drags)
-        unsubscribeSelectionDrag = subscribeToSelectionDrags('global-canvas-v1', (selections) => {
-          setSelectionDrags(selections);
-        });
-
-      } catch (error) {
-        console.error('Failed to setup canvas:', error);
-        setLoading(false);
-        
-        // Handle connection errors
-        if (error instanceof Error && (error.message.includes('unavailable') || error.message.includes('deadline-exceeded'))) {
-          setConnectionStatus('disconnected');
-          setIsReconnecting(true);
-          
-          // Attempt reconnection after a delay
-          setTimeout(() => {
-            setConnectionStatus('reconnecting');
-            setupCanvas(); // Retry setup
-          }, 2000);
-        }
-      }
-    };
-
-    setupCanvas();
-
-    // Cleanup: unsubscribe and release locks on unmount
-    return () => {
-      if (unsubscribeShapes) {
-        unsubscribeShapes();
-      }
-      if (unsubscribeDrag) {
-        unsubscribeDrag();
-      }
-      if (unsubscribeSelectionDrag) {
-        unsubscribeSelectionDrag();
-      }
-      // Cancel any pending drag RAF
-      if (dragUpdateRafRef.current !== null) {
-        cancelAnimationFrame(dragUpdateRafRef.current);
-      }
-      // Use the ref to get userId for cleanup, even if currentUser is already null
-      const userId = currentUserIdRef.current;
-      if (userId) {
-        cleanupUserLocks(userId).catch(console.error);
-      }
-    };
-  }, [currentUser]);
-
-  // ============================================================================
-  // Shape CRUD Operations (with Firestore sync)
-  // ============================================================================
-
-  /**
-   * Adds a new shape to the canvas
-   * Syncs to Firestore for real-time collaboration
-   * @param shapeData - Shape data to create
-   * @param options - Optional settings (e.g., skipAutoLock for AI-created shapes)
-   */
-  const addShape = useCallback(
-    async (
-      shapeData: Omit<Shape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>,
-      options?: { skipAutoLock?: boolean }
-    ) => {
-      if (!currentUser) {
-        throw new Error('Must be logged in to create shapes');
-      }
-
-      // Increment counter and generate name
-      shapeCounterRef.current[shapeData.type] += 1;
-      const shapeNumber = shapeCounterRef.current[shapeData.type];
-      
-      let name: string;
-      if (shapeData.type === 'rectangle') {
-        name = `Rectangle ${shapeNumber}`;
-      } else if (shapeData.type === 'circle') {
-        name = `Circle ${shapeNumber}`;
-      } else if (shapeData.type === 'line') {
-        name = `Line ${shapeNumber}`;
-      } else {
-        name = `Text ${shapeNumber}`;
-      }
-
-      // Calculate zIndex (new shapes go on top)
-      const maxZIndex = shapes.length > 0 
-        ? Math.max(...shapes.map(s => s.zIndex)) 
-        : -1;
-
-      const newShape: Shape = {
-        ...shapeData,
-        id: generateId(),
-        name,
-        zIndex: maxZIndex + 1,
-        isLocked: false,
-        lockedBy: null,
-        lockedByName: null,
-      } as Shape;
-
-      try {
-        await createShapeInFirestore(newShape);
-        
-        // Only auto-select and lock if not skipped (e.g., for AI-created shapes)
-        if (!options?.skipAutoLock) {
-          // Get previously selected shapes to unlock them
-          const previousSelection = [...selectedIdsRef.current];
-          
-          // STEP 1: Unlock ALL previously selected shapes FIRST (before locking new shape)
-          if (previousSelection.length > 0) {
-            try {
-              await unlockShapesBatch(previousSelection, currentUser.uid);
-            } catch (error) {
-              console.error('Failed to unlock previous shapes:', error);
-              // Continue anyway - don't block new shape creation
-            }
-          }
-          
-          // STEP 2: Update selection state to the new shape
-          setSelectedIds([newShape.id]);
-          // CRITICAL: Update ref immediately (synchronously) to prevent stale reads on rapid shape creation
-          selectedIdsRef.current = [newShape.id];
-          
-          // STEP 3: Lock the newly created shape for the current user
-          try {
-            await lockShapeInFirestore(
-              newShape.id, 
-              currentUser.uid, 
-              currentUser.displayName || 'Unknown User'
-            );
-            // Small delay to ensure lock is fully propagated to Firestore before next shape can be created
-            // This prevents race condition where unlock reads shape before lock completes
-            await new Promise(resolve => setTimeout(resolve, 50));
-          } catch (error) {
-            console.error('Failed to lock new shape:', error);
-            // If lock fails, clear selection
-            setSelectedIds([]);
-          }
-        }
-        
-        return newShape.id; // Return the ID of the created shape
-      } catch (error) {
-        console.error('Failed to add shape:', error);
-        throw error;
-      }
-    },
-    [currentUser, shapes]
+  useCanvasInitialization(
+    currentUser,
+    setShapes,
+    setLoading,
+    setDragPositions,
+    setSelectionDrags,
+    setLocalUpdates,
+    shapeCounterRef,
+    connectionStatus,
+    setConnectionStatus,
+    setIsReconnecting
   );
 
-  /**
-   * Updates an existing shape
-   * @param id - Shape ID to update
-   * @param updates - Partial shape updates
-   * @param localOnly - If true, only updates local state (no Firebase sync). If false/undefined, syncs to Firebase.
-   */
-  const updateShape = useCallback(
-    async (id: string, updates: ShapeUpdate, localOnly = false) => {
-      if (!currentUser) {
-        throw new Error('Must be logged in to update shapes');
-      }
-
-      // Always update local state first for instant feedback
-      setLocalUpdates((prev) => {
-        const newMap = new Map(prev);
-        const existing = newMap.get(id) || {};
-        newMap.set(id, { ...existing, ...updates });
-        return newMap;
-      });
-
-      // If not local-only, also sync to Firebase (but keep local updates for smooth transition)
-      if (!localOnly) {
-        const maxRetries = 3;
-        let retryCount = 0;
-        
-        while (retryCount < maxRetries) {
-          try {
-            await updateShapeInFirestore(id, updates);
-            // Don't clear local updates immediately - let Firestore subscription handle it
-            // This prevents the flash when the update is in-flight
-            return; // Success, exit retry loop
-          } catch (error) {
-            retryCount++;
-            console.warn(`Update attempt ${retryCount} failed for shape ${id}:`, error);
-            
-            if (retryCount >= maxRetries) {
-              console.error('Failed to update shape after all retries:', error);
-              throw error;
-            }
-            
-            // Wait before retry (exponential backoff)
-            await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 100));
-          }
-        }
-      }
-    },
-    [currentUser]
+  // Shape CRUD Operations
+  const {
+    addShape,
+    updateShape,
+    updateShapesBatchLocal,
+    clearLocalUpdates,
+    deleteShape,
+    deleteShapes,
+  } = useShapeOperations(
+    currentUser,
+    shapes,
+    shapeCounterRef,
+    selectedIdsRef,
+    setSelectedIds,
+    setLocalUpdates
   );
 
-  /**
-   * Updates multiple shapes at once (batch update for local state only)
-   * OPTIMIZATION: Prevents multiple React re-renders by batching all updates into one state change
-   * @param updates - Array of {id, updates} objects to update
-   */
-  const updateShapesBatchLocal = useCallback(
-    (updates: Array<{ id: string; updates: Partial<Shape> }>) => {
-      if (!currentUser || updates.length === 0) return;
+  // Shape Locking
+  const { lockShape, unlockShape } = useShapeLocking(currentUser);
 
-      // Single state update for all shapes
-      setLocalUpdates((prev) => {
-        const newMap = new Map(prev);
-        updates.forEach(({ id, updates: shapeUpdates }) => {
-          const existing = newMap.get(id) || {};
-          newMap.set(id, { ...existing, ...shapeUpdates });
-        });
-        return newMap;
-      });
-    },
-    [currentUser]
+  // Shape Selection
+  const { selectShape, selectMultipleShapes } = useShapeSelection(
+    currentUser,
+    shapes,
+    selectedIdsRef,
+    setSelectedIds,
+    lockShape,
+    unlockShape
   );
 
-  /**
-   * Clears local updates for specific shape IDs
-   * Used after batch operations to prevent stale local state
-   */
-  const clearLocalUpdates = useCallback((shapeIds: string[]) => {
-    setLocalUpdates((prev) => {
-      const newMap = new Map(prev);
-      shapeIds.forEach(id => newMap.delete(id));
-      return newMap;
-    });
-  }, []);
-
-  /**
-   * Deletes a shape from the canvas
-   * Cannot delete shapes locked by other users
-   */
-  const deleteShape = useCallback(
-    async (id: string) => {
-      if (!currentUser) {
-        throw new Error('Must be logged in to delete shapes');
-      }
-
-      try {
-        await deleteShapeInFirestore(id, currentUser.uid);
-        // Remove from selection if it was selected
-        setSelectedIds((prev) => prev.filter(shapeId => shapeId !== id));
-      } catch (error) {
-        console.error('Failed to delete shape:', error);
-        // Log error but don't interrupt user flow
-        if (error instanceof Error) {
-          console.warn('Delete operation failed:', error.message);
-        }
-      }
-    },
-    [currentUser]
+  // Shape Reordering and Duplication
+  const { reorderShapes, duplicateShapes } = useShapeReordering(
+    currentUser,
+    shapes,
+    selectMultipleShapes
   );
 
-  /**
-   * Deletes multiple shapes at once (batch operation)
-   * ⚡ ALL SHAPES DELETE SIMULTANEOUSLY - single Firestore transaction
-   * Cannot delete shapes locked by other users
-   */
-  const deleteShapes = useCallback(
-    async (shapeIds: string[]) => {
-      if (!currentUser) {
-        throw new Error('Must be logged in to delete shapes');
-      }
-
-      if (shapeIds.length === 0) {
-        return;
-      }
-
-      try {
-        // ⚡ BATCH DELETE - all shapes delete at once!
-        await deleteShapesBatchInFirestore(shapeIds, currentUser.uid);
-        
-        // Remove all deleted shapes from selection
-        setSelectedIds((prev) => prev.filter(id => !shapeIds.includes(id)));
-      } catch (error) {
-        console.error('Failed to batch delete shapes:', error);
-        // Log error but don't interrupt user flow
-        if (error instanceof Error) {
-          console.warn('Batch delete operation failed:', error.message);
-        }
-      }
-    },
-    [currentUser]
+  // Merge real-time drag positions with persistent shapes
+  const shapesWithDragPositions = useDragSync(
+    shapes,
+    dragPositions,
+    selectionDrags,
+    localUpdates,
+    currentUser
   );
 
-  // ============================================================================
-  // Shape Locking (for selection and drag operations)
-  // ============================================================================
-
-  /**
-   * Locks a shape when user selects or starts dragging
-   * Syncs to Firestore and sets up auto-release
-   */
-  const lockShape = useCallback(
-    async (id: string, userId: string, userName: string) => {
-      if (!currentUser) {
-        throw new Error('Must be logged in to lock shapes');
-      }
-
-      const maxRetries = 3;
-      let retryCount = 0;
-      
-      while (retryCount < maxRetries) {
-        try {
-          await lockShapeInFirestore(id, userId, userName);
-          return; // Success, exit retry loop
-        } catch (error) {
-          retryCount++;
-          console.warn(`Lock attempt ${retryCount} failed for shape ${id}:`, error);
-          
-          if (retryCount >= maxRetries) {
-            console.error('Failed to lock shape after all retries:', error);
-            // Log warning but don't interrupt user flow
-            if (error instanceof Error) {
-              console.warn('Lock operation failed:', error.message);
-            }
-            throw error;
-          }
-          
-          // Wait before retry (exponential backoff)
-          await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 100));
-        }
-      }
-    },
-    [currentUser]
-  );
-
-  /**
-   * Unlocks a shape when user deselects or stops dragging
-   * Syncs to Firestore
-   */
-  const unlockShape = useCallback(
-    async (id: string) => {
-      if (!currentUser) {
-        return;
-      }
-
-      try {
-        await unlockShapeInFirestore(id, currentUser.uid);
-      } catch (error) {
-        console.error('Failed to unlock shape:', id, error);
-        throw error;
-      }
-    },
-    [currentUser]
-  );
-
-  /**
-   * Sets the selected shape IDs
-   * NEW (PR #12): Support multi-selection with Shift+Click
-   * Locks shapes on selection, unlocks deselected shapes
-   * FIXED: Ensure locked shapes remain selected when clicking on other objects
-   * FIXED: Use ref to avoid stale closure when clicking shapes quickly
-   */
-  const selectShape = useCallback(async (id: string | null, addToSelection = false) => {
-    // CRITICAL: Read from ref to get LATEST selectedIds, not stale closure value
-    const currentSelectedIds = selectedIdsRef.current;
-    
-    if (!currentUser) return;
-
-    // If clicking background (id = null), deselect all
-    if (id === null) {
-      const shapesToUnlock = [...currentSelectedIds];
-      
-      // Update state immediately
-      setSelectedIds([]);
-      // CRITICAL: Update ref synchronously
-      selectedIdsRef.current = [];
-      
-      // ⚡ BATCH UNLOCK - all shapes unlock simultaneously for all users!
-      if (shapesToUnlock.length > 0) {
-        try {
-          await unlockShapesBatch(shapesToUnlock, currentUser.uid);
-        } catch (error) {
-          console.error('Failed to unlock shapes:', error);
-        }
-      }
-      return;
-    }
-
-    // Check if shape is locked by another user BEFORE changing selection
-    const shape = shapes.find(s => s.id === id);
-    if (shape?.isLocked && shape.lockedBy && shape.lockedBy !== currentUser.uid) {
-      // DO NOT change selection - shape is locked by another user
-      return;
-    }
-
-    // If addToSelection (Shift+Click)
-    if (addToSelection) {
-      const isAlreadySelected = currentSelectedIds.includes(id);
-      
-      if (isAlreadySelected) {
-        // Deselect this shape (remove from selection)
-        const newSelection = currentSelectedIds.filter(shapeId => shapeId !== id);
-        setSelectedIds(newSelection);
-        // CRITICAL: Update ref synchronously
-        selectedIdsRef.current = newSelection;
-        // Then unlock (await to ensure it completes)
-        try {
-          await unlockShape(id);
-        } catch (error) {
-          console.error('Failed to unlock shape:', error);
-        }
-      } else {
-        // Add to selection - update state first
-        const newSelection = [...currentSelectedIds, id];
-        setSelectedIds(newSelection);
-        // CRITICAL: Update ref synchronously
-        selectedIdsRef.current = newSelection;
-        // Then lock the shape (await to ensure it completes)
-        try {
-          await lockShape(id, currentUser.uid, currentUser.displayName || 'Unknown');
-        } catch (error) {
-          console.error('Failed to lock shape:', error);
-          // If lock fails, remove from selection
-          const revertedSelection = currentSelectedIds;
-          setSelectedIds(revertedSelection);
-          selectedIdsRef.current = revertedSelection;
-        }
-      }
-    } else {
-      // Normal selection (replace current selection)
-      const previousSelection = [...currentSelectedIds];
-      
-      // First, unlock all previously selected shapes (if any) BEFORE locking new one
-      const shapesToUnlock = previousSelection.filter(shapeId => shapeId !== id);
-      if (shapesToUnlock.length > 0) {
-        try {
-          await unlockShapesBatch(shapesToUnlock, currentUser.uid);
-        } catch (error) {
-          console.error('Failed to unlock previous shapes:', error);
-        }
-      }
-      
-      // Update selection state for visual feedback
-      setSelectedIds([id]);
-      // CRITICAL: Update ref synchronously
-      selectedIdsRef.current = [id];
-      
-      // Then lock the new shape if it wasn't already selected
-      const needsLocking = !previousSelection.includes(id);
-      
-      if (needsLocking) {
-        try {
-          await lockShape(id, currentUser.uid, currentUser.displayName || 'Unknown');
-        } catch (error) {
-          console.error('Failed to lock shape:', error);
-          // If lock fails, revert to previous selection
-          setSelectedIds(previousSelection);
-          selectedIdsRef.current = previousSelection;
-        }
-      }
-    }
-  }, [currentUser, shapes, lockShape, unlockShape]);
-
-  /**
-   * Select multiple shapes atomically (batch selection)
-   * Updates ALL shapes at once to prevent race conditions
-   * @param ids - Array of shape IDs to select
-   * @param addToSelection - If true, adds to current selection; if false, replaces selection
-   */
-  const selectMultipleShapes = useCallback(async (ids: string[], addToSelection = false) => {
-    if (!currentUser || ids.length === 0) return;
-
-    // CRITICAL: Read from ref to get LATEST selectedIds
-    const currentSelectedIds = selectedIdsRef.current;
-
-    // Filter out shapes locked by other users
-    const selectableIds = ids.filter(id => {
-      const shape = shapes.find(s => s.id === id);
-      return !shape?.isLocked || !shape.lockedBy || shape.lockedBy === currentUser.uid;
-    });
-
-    if (selectableIds.length === 0) return;
-
-    // Calculate what needs to be locked/unlocked
-    let newSelection: string[];
-    let shapesToLock: string[];
-    let shapesToUnlock: string[];
-
-    if (addToSelection) {
-      // Add to existing selection
-      newSelection = [...new Set([...currentSelectedIds, ...selectableIds])];
-      shapesToLock = selectableIds.filter(id => !currentSelectedIds.includes(id));
-      shapesToUnlock = [];
-    } else {
-      // Replace selection
-      newSelection = selectableIds;
-      shapesToLock = selectableIds.filter(id => !currentSelectedIds.includes(id));
-      shapesToUnlock = currentSelectedIds.filter(id => !selectableIds.includes(id));
-    }
-
-    // ⚡ ATOMIC STATE UPDATE - happens synchronously
-    setSelectedIds(newSelection);
-    // CRITICAL: Update ref synchronously
-    selectedIdsRef.current = newSelection;
-
-    // 🔒 BATCH LOCK/UNLOCK - all shapes update simultaneously for all users!
-    // Add retry logic for better conflict resolution during rapid edits
-    const executeWithRetry = async (operation: () => Promise<void>, operationName: string, maxRetries = 3) => {
-      let retryCount = 0;
-      while (retryCount < maxRetries) {
-        try {
-          await operation();
-          return;
-        } catch (error) {
-          retryCount++;
-          console.warn(`${operationName} attempt ${retryCount} failed:`, error);
-          if (retryCount >= maxRetries) {
-            console.error(`${operationName} failed after all retries:`, error);
-            return;
-          }
-          // Exponential backoff
-          await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 50));
-        }
-      }
-    };
-
-    Promise.all([
-      shapesToLock.length > 0
-        ? executeWithRetry(
-            () => lockShapesBatch(shapesToLock, currentUser.uid, currentUser.displayName || 'Unknown'),
-            'Batch lock'
-          )
-        : Promise.resolve(),
-      shapesToUnlock.length > 0
-        ? executeWithRetry(
-            () => unlockShapesBatch(shapesToUnlock, currentUser.uid),
-            'Batch unlock'
-          )
-        : Promise.resolve(),
-    ]).catch(console.error);
-  }, [currentUser, shapes]);
-
-  /**
-   * Reorders shapes (for z-index management)
-   * Syncs to Firestore
-   */
-  const reorderShapes = useCallback(
-    async (newOrder: Shape[]) => {
-      if (!currentUser) {
-        throw new Error('Must be logged in to reorder shapes');
-      }
-
-      try {
-        await reorderShapesInFirestore(newOrder);
-      } catch (error) {
-        console.error('Failed to reorder shapes:', error);
-        throw error;
-      }
-    },
-    [currentUser]
-  );
-
-  /**
-   * Duplicates selected shapes (PR #13)
-   * Creates copies with offset positions and auto-generated names
-   * ⚡ ALL SHAPES DUPLICATE SIMULTANEOUSLY for all users (single Firestore transaction)
-   * @param shapeIds - Array of shape IDs to duplicate
-   * @returns Array of new shape IDs
-   */
-  const duplicateShapes = useCallback(
-    async (shapeIds: string[]): Promise<string[]> => {
-      if (!currentUser) {
-        throw new Error('Must be logged in to duplicate shapes');
-      }
-
-      if (shapeIds.length === 0) {
-        return [];
-      }
-
-      const newShapeIds: string[] = [];
-      const duplicatedShapes: Shape[] = [];
-      const OFFSET = 20; // Offset in pixels for duplicate visibility
-
-      try {
-        // Calculate max zIndex for new shapes to appear on top
-        const maxZIndex = shapes.length > 0 
-          ? Math.max(...shapes.map(s => s.zIndex)) 
-          : -1;
-
-        // Process each shape and prepare for batch creation
-        for (const shapeId of shapeIds) {
-          const originalShape = shapes.find(s => s.id === shapeId);
-          if (!originalShape) continue;
-
-          // Generate new ID
-          const newId = generateId();
-
-          // Generate duplicate name with "Copy" suffix
-          // If name already ends with "Copy N", increment N
-          let newName: string;
-          const copyMatch = originalShape.name.match(/^(.+?)(?: Copy (\d+))?$/);
-          if (copyMatch) {
-            const baseName = copyMatch[1];
-            const copyNumber = copyMatch[2] ? parseInt(copyMatch[2], 10) + 1 : 2;
-            
-            // Check if it's a default numbered name (e.g., "Rectangle 1")
-            // If so, use "Rectangle 1 Copy" instead of "Rectangle Copy"
-            if (baseName.match(/^(Rectangle|Circle|Text|Line) \d+$/)) {
-              newName = copyNumber === 2 ? `${baseName} Copy` : `${baseName} Copy ${copyNumber}`;
-            } else {
-              // For user-renamed shapes, just add Copy suffix
-              newName = copyNumber === 2 ? `${baseName} Copy` : `${baseName} Copy ${copyNumber}`;
-            }
-          } else {
-            newName = `${originalShape.name} Copy`;
-          }
-
-          // Create duplicate shape with offset position
-          let duplicateShape: Shape;
-          
-          if (originalShape.type === 'line') {
-            // Lines use x1, y1, x2, y2 coordinates
-            duplicateShape = {
-              ...originalShape,
-              id: newId,
-              name: newName,
-              x1: originalShape.x1 + OFFSET,
-              y1: originalShape.y1 + OFFSET,
-              x2: originalShape.x2 + OFFSET,
-              y2: originalShape.y2 + OFFSET,
-              zIndex: maxZIndex + duplicatedShapes.length + 1,
-              isLocked: false,
-              lockedBy: null,
-              lockedByName: null,
-            } as LineShape;
-          } else {
-            // Rectangle, Circle, Text use x, y coordinates
-            duplicateShape = {
-              ...originalShape,
-              id: newId,
-              name: newName,
-              x: originalShape.x + OFFSET,
-              y: originalShape.y + OFFSET,
-              zIndex: maxZIndex + duplicatedShapes.length + 1,
-              isLocked: false,
-              lockedBy: null,
-              lockedByName: null,
-            } as Shape;
-          }
-
-          duplicatedShapes.push(duplicateShape);
-          newShapeIds.push(newId);
-        }
-
-        // ⚡ BATCH CREATE - all shapes create at once!
-        await createShapesBatchInFirestore(duplicatedShapes);
-
-        // Select the newly duplicated shapes and properly handle locking
-        // This will unlock the original shapes and lock only the new duplicates
-        await selectMultipleShapes(newShapeIds, false);
-
-        return newShapeIds;
-      } catch (error) {
-        console.error('Failed to duplicate shapes:', error);
-        throw error;
-      }
-    },
-    [currentUser, shapes, selectMultipleShapes]
-  );
-
-  // Merge real-time drag positions, selection drags, and local updates with persistent shapes
-  // Memoized to prevent unnecessary re-renders - only recompute when dependencies change
-  // CRITICAL: Only create new objects for shapes that actually changed to maintain referential equality
-  const shapesWithDragPositions = useMemo(() => {
-    return shapes.map(shape => {
-      const localUpdate = localUpdates.get(shape.id);
-      const dragPos = dragPositions.get(shape.id);
-      const isDraggedByOther = dragPos && dragPos.draggingBy !== currentUser?.uid;
-      
-      // Check if this shape is in a selection drag by another user
-      const activeSelectionDragArray: Array<{
-        deltaX: number;
-        deltaY: number;
-        initialPos: { x: number; y: number; x1?: number; y1?: number; x2?: number; y2?: number };
-      }> = [];
-      
-      selectionDrags.forEach((drag) => {
-        // Only apply selection drag from other users
-        // NOTE: shapeIds may be undefined during partial updates (delta-only)
-        if (drag.userId !== currentUser?.uid && drag.shapeIds?.includes(shape.id)) {
-          const initialPos = drag.initialPositions?.[shape.id];
-          if (initialPos) {
-            activeSelectionDragArray.push({
-              deltaX: drag.deltaX,
-              deltaY: drag.deltaY,
-              initialPos,
-            });
-          }
-        }
-      });
-      
-      const activeSelectionDrag = activeSelectionDragArray[0] || null;
-      
-      // Apply drag positions ONLY from other users (not our own)
-      // Local updates handle our own dragging for instant feedback
-      const shouldApplyDragPos = isDraggedByOther;
-      const shouldApplySelectionDrag = activeSelectionDrag !== null;
-      
-      // If no updates for this shape, return the original reference (prevents unnecessary re-renders)
-      if (!localUpdate && !shouldApplyDragPos && !shouldApplySelectionDrag) {
-        return shape;
-      }
-      
-      // Start with shape data
-      let mergedShape: Shape = shape;
-      
-      // Apply selection drag delta (PRIORITY: This takes precedence)
-      if (activeSelectionDrag) {
-        const deltaX = activeSelectionDrag.deltaX;
-        const deltaY = activeSelectionDrag.deltaY;
-        const initialPos = activeSelectionDrag.initialPos;
-        
-        // Calculate new position from initial position + delta (LOCAL CALCULATION)
-        if (shape.type === 'line') {
-          // Lines use x1, y1, x2, y2
-          if (initialPos.x1 !== undefined && initialPos.y1 !== undefined &&
-              initialPos.x2 !== undefined && initialPos.y2 !== undefined) {
-            const newX1 = initialPos.x1 + deltaX;
-            const newY1 = initialPos.y1 + deltaY;
-            const newX2 = initialPos.x2 + deltaX;
-            const newY2 = initialPos.y2 + deltaY;
-            
-            mergedShape = {
-              ...mergedShape,
-              x1: newX1,
-              y1: newY1,
-              x2: newX2,
-              y2: newY2,
-            } as Shape;
-          }
-        } else {
-          // Regular shapes use x, y
-          const newX = initialPos.x + deltaX;
-          const newY = initialPos.y + deltaY;
-          
-          mergedShape = {
-            ...mergedShape,
-            x: newX,
-            y: newY,
-          } as Shape;
-        }
-      }
-      // Apply local updates if they exist (only if not in selection drag)
-      else if (localUpdate) {
-        mergedShape = { ...mergedShape, ...localUpdate } as Shape;
-      }
-      // Apply drag positions (from other users OR current user for lines)
-      else if (shouldApplyDragPos && dragPos) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const baseUpdates: any = {
-          ...mergedShape,
-          x: dragPos.x,
-          y: dragPos.y,
-          // Only mark as "dragging" if it's by another user
-          isDragging: isDraggedByOther,
-          draggingBy: isDraggedByOther ? dragPos.draggingBy : undefined,
-          draggingByName: isDraggedByOther ? dragPos.draggingByName : undefined,
-        };
-        
-        // Include rotation if it's being updated
-        if (dragPos.rotation !== undefined) {
-          baseUpdates.rotation = dragPos.rotation;
-        }
-        
-        // Include dimensions if they're being updated (for resize operations)
-        if (mergedShape.type === 'rectangle' && dragPos.width !== undefined) {
-          baseUpdates.width = dragPos.width;
-        }
-        if (mergedShape.type === 'rectangle' && dragPos.height !== undefined) {
-          baseUpdates.height = dragPos.height;
-        }
-        if (mergedShape.type === 'circle' && dragPos.radius !== undefined) {
-          baseUpdates.radius = dragPos.radius;
-        }
-        if (mergedShape.type === 'text' && dragPos.width !== undefined) {
-          baseUpdates.width = dragPos.width;
-        }
-        if (mergedShape.type === 'text' && dragPos.fontSize !== undefined) {
-          baseUpdates.fontSize = dragPos.fontSize;
-        }
-        
-        // Include line coordinates if they're being updated
-        if (mergedShape.type === 'line') {
-          if (dragPos.x1 !== undefined) {
-            baseUpdates.x1 = dragPos.x1;
-          }
-          if (dragPos.y1 !== undefined) {
-            baseUpdates.y1 = dragPos.y1;
-          }
-          if (dragPos.x2 !== undefined) {
-            baseUpdates.x2 = dragPos.x2;
-          }
-          if (dragPos.y2 !== undefined) {
-            baseUpdates.y2 = dragPos.y2;
-          }
-        }
-        
-        return baseUpdates as Shape;
-      }
-      
-      return mergedShape;
-    });
-  }, [shapes, dragPositions, selectionDrags, localUpdates, currentUser?.uid]);
-
-  // Memoize the context value to prevent unnecessary re-renders of consumers
+  // Memoize the context value to prevent unnecessary re-renders
   const value: CanvasContextType = useMemo(
     () => ({
       shapes: shapesWithDragPositions,
@@ -1075,4 +185,3 @@ export function useCanvasContext() {
   }
   return context;
 }
-

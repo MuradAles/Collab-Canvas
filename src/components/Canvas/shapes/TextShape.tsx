@@ -102,7 +102,7 @@ export const TextShape = forwardRef<Konva.Text, TextShapeProps>(
               'middle-left',
               'middle-right',
             ]}
-            rotateEnabled={false}
+            rotateEnabled={true}
             borderStroke={SELECTION_STROKE}
             borderStrokeWidth={SELECTION_STROKE_WIDTH}
             anchorSize={8}

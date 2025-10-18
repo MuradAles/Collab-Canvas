@@ -242,7 +242,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'rotateShape',
-      description: 'Rotate a shape by a specified angle in degrees. Only works for rectangles and lines.',
+      description: 'Rotate a shape by a specified angle in degrees. Works for rectangles, lines, and text.',
       parameters: {
         type: 'object',
         properties: {

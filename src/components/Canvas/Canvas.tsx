@@ -448,6 +448,7 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
    * Handle box selection end - find and select intersecting shapes
    * ⚡ ATOMIC: Selects all shapes at once to prevent race conditions
    * NOTE: Box selection checks all shapes, not just visible ones
+   * Uses lenient intersection - any overlap selects the shape
    */
   const handleSelectionEnd = useCallback(async () => {
     if (!isSelecting || !selectionRect || !currentUser) {
@@ -456,6 +457,15 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
       setSelectionRect(null);
       return;
     }
+
+    // No padding for accurate selection - use exact selection box
+    const SELECTION_PADDING = 0;
+    const paddedSelectionRect = {
+      x: selectionRect.x - SELECTION_PADDING,
+      y: selectionRect.y - SELECTION_PADDING,
+      width: selectionRect.width + SELECTION_PADDING * 2,
+      height: selectionRect.height + SELECTION_PADDING * 2,
+    };
 
     // Find all shapes that intersect with the selection rectangle
     // Use ALL shapes (not just visible ones) for selection
@@ -466,31 +476,31 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
       }
 
       if (shape.type === 'rectangle' || shape.type === 'text') {
-        // For rectangles and text, check bounding box intersection
+        // For rectangles and text, check bounding box intersection with padding
         const shapeRect = {
           x: shape.x,
           y: shape.y,
           width: shape.width || 100,
           height: shape.type === 'rectangle' ? shape.height : (shape.fontSize || 16),
         };
-        return rectanglesIntersect(selectionRect, shapeRect);
+        return rectanglesIntersect(paddedSelectionRect, shapeRect);
       } else if (shape.type === 'circle') {
-        // For circles, check circle-rectangle intersection
+        // For circles, check circle-rectangle intersection with padding
         const circle = {
           x: shape.x,
           y: shape.y,
           radius: shape.radius,
         };
-        return circleIntersectsRect(circle, selectionRect);
+        return circleIntersectsRect(circle, paddedSelectionRect);
       } else if (shape.type === 'line') {
-        // For lines, check line-rectangle intersection
+        // For lines, check line-rectangle intersection with padding
         const line = {
           x1: shape.x1,
           y1: shape.y1,
           x2: shape.x2,
           y2: shape.y2,
         };
-        return lineIntersectsRect(line, selectionRect);
+        return lineIntersectsRect(line, paddedSelectionRect);
       }
       return false;
     });
@@ -1237,33 +1247,48 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
           const selectedShape = shapes.find(s => s.id === selectedIds[0]);
           if (!selectedShape) return null;
 
-          // Calculate shape bounds
-          let shapeX = 0, shapeY = 0, shapeWidth = 0;
+          // Hide controls during drag or transform operations
+          if (selectedShape.isDragging) return null;
+
+          // Calculate shape center position (works for rotated and non-rotated shapes)
+          let shapeCenterX = 0, shapeCenterY = 0;
+          let estimatedRadius = 0; // Approximate radius for offset calculation
           
           if (selectedShape.type === 'line') {
-            const minX = Math.min(selectedShape.x1, selectedShape.x2);
-            const maxX = Math.max(selectedShape.x1, selectedShape.x2);
-            const minY = Math.min(selectedShape.y1, selectedShape.y2);
-            shapeX = minX;
-            shapeY = minY;
-            shapeWidth = maxX - minX;
-          } else {
-            shapeX = selectedShape.x;
-            shapeY = selectedShape.y;
-            if (selectedShape.type === 'circle') {
-              shapeWidth = selectedShape.radius * 2;
-              shapeX -= selectedShape.radius;
-              shapeY -= selectedShape.radius;
-            } else if (selectedShape.type === 'rectangle') {
-              shapeWidth = selectedShape.width;
-            } else if (selectedShape.type === 'text') {
-              shapeWidth = selectedShape.width || 100;
-            }
+            // For lines, use midpoint
+            shapeCenterX = (selectedShape.x1 + selectedShape.x2) / 2;
+            shapeCenterY = (selectedShape.y1 + selectedShape.y2) / 2;
+            estimatedRadius = Math.max(
+              Math.abs(selectedShape.x2 - selectedShape.x1),
+              Math.abs(selectedShape.y2 - selectedShape.y1)
+            ) / 2;
+          } else if (selectedShape.type === 'circle') {
+            // For circles, x, y is the center
+            shapeCenterX = selectedShape.x;
+            shapeCenterY = selectedShape.y;
+            estimatedRadius = selectedShape.radius;
+          } else if (selectedShape.type === 'rectangle') {
+            // For rectangles, calculate center (rotation doesn't affect center position)
+            shapeCenterX = selectedShape.x + selectedShape.width / 2;
+            shapeCenterY = selectedShape.y + selectedShape.height / 2;
+            // Estimate radius as half diagonal for proper offset regardless of rotation
+            estimatedRadius = Math.sqrt(selectedShape.width ** 2 + selectedShape.height ** 2) / 2;
+          } else if (selectedShape.type === 'text') {
+            // For text, calculate center
+            const textWidth = selectedShape.width || 100;
+            const textHeight = selectedShape.fontSize || 16;
+            shapeCenterX = selectedShape.x + textWidth / 2;
+            shapeCenterY = selectedShape.y + textHeight / 2;
+            estimatedRadius = Math.sqrt(textWidth ** 2 + textHeight ** 2) / 2;
           }
 
           // Convert canvas coordinates to screen coordinates
-          const screenY = shapeY * stageScale + stagePosition.y - 45; // Position above shape
-          const screenCenterX = (shapeX + shapeWidth / 2) * stageScale + stagePosition.x;
+          const screenCenterX = shapeCenterX * stageScale + stagePosition.x;
+          const screenCenterY = shapeCenterY * stageScale + stagePosition.y;
+          
+          // Position controls below the shape in screen space (60px below center + estimated radius)
+          // This offset in screen space ensures controls appear below regardless of rotation
+          const screenY = screenCenterY + estimatedRadius * stageScale + 60;
 
           // Get current index
           const currentIndex = shapes.findIndex(s => s.id === selectedShape.id);
@@ -1306,7 +1331,7 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
                 top: `${screenY}px`,
                 transform: 'translateX(-50%)',
                 zIndex: 1000,
-                pointerEvents: 'auto',
+                pointerEvents: 'none',
               }}
               className="flex items-center gap-1 bg-theme-surface rounded-lg shadow-lg border border-theme p-1"
             >
@@ -1314,6 +1339,7 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
               <button
                 onClick={handleBringToFront}
                 disabled={!canMoveUp}
+                style={{ pointerEvents: 'auto' }}
                 className={`p-1.5 rounded hover:bg-theme-surface-hover transition-colors ${
                   !canMoveUp ? 'opacity-30 cursor-not-allowed' : ''
                 }`}
@@ -1329,6 +1355,7 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
               <button
                 onClick={handleMoveUp}
                 disabled={!canMoveUp}
+                style={{ pointerEvents: 'auto' }}
                 className={`p-1.5 rounded hover:bg-theme-surface-hover transition-colors ${
                   !canMoveUp ? 'opacity-30 cursor-not-allowed' : ''
                 }`}
@@ -1343,6 +1370,7 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
               <button
                 onClick={handleMoveDown}
                 disabled={!canMoveDown}
+                style={{ pointerEvents: 'auto' }}
                 className={`p-1.5 rounded hover:bg-theme-surface-hover transition-colors ${
                   !canMoveDown ? 'opacity-30 cursor-not-allowed' : ''
                 }`}
@@ -1357,6 +1385,7 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
               <button
                 onClick={handleSendToBack}
                 disabled={!canMoveDown}
+                style={{ pointerEvents: 'auto' }}
                 className={`p-1.5 rounded hover:bg-theme-surface-hover transition-colors ${
                   !canMoveDown ? 'opacity-30 cursor-not-allowed' : ''
                 }`}
