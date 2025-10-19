@@ -35,7 +35,6 @@ import { PropertiesPanel } from './PropertiesPanel';
 import { LayersPanel } from './LayersPanel';
 import { CursorsLayer } from './CursorsLayer';
 // import { FPSCounter } from './FPSCounter';
-import { Tutorial } from './Tutorial';
 import { AICanvasIntegration } from '../AI/AICanvasIntegration';
 import { AICommandsModal } from '../AI/AICommandsModal';
 import { useCanvasPanZoom } from '../../hooks/useCanvasPanZoom';
@@ -1526,11 +1525,6 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
 
         {/* FPS Counter */}
         {/* <FPSCounter /> */}
-
-      {/* Tutorial Button - Right Bottom Corner */}
-      <div className="fixed right-4 bottom-4 z-[100]">
-        <Tutorial />
-      </div>
 
       {/* Properties Panel - Absolute positioned, full height */}
       <div className="absolute right-0 top-0 h-full z-20">
