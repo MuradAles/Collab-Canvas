@@ -161,9 +161,15 @@ function ShapeComponent({
 
   // Determine opacity
   const getOpacity = () => {
-    if (isLockedByOther) return 0.4;
-    if (isDraggedByOther || isRotatedByOther) return 0.4;
-    return 1;
+    // Start with shape's opacity (default to 1 if not set)
+    const baseOpacity = shape.opacity !== undefined ? shape.opacity : 1;
+    
+    // Apply dim effect if locked or being dragged by others
+    if (isLockedByOther || isDraggedByOther || isRotatedByOther) {
+      return Math.min(baseOpacity, 0.4); // Dim to 40% max, or use shape opacity if already lower
+    }
+    
+    return baseOpacity;
   };
 
   const strokeColor = getStrokeColor();
@@ -319,7 +325,9 @@ export const Shape = memo(ShapeComponent, (prevProps, nextProps) => {
       prev.stroke === next.stroke &&
       prev.strokeWidth === next.strokeWidth &&
       prev.cornerRadius === next.cornerRadius &&
-      (prev.rotation ?? 0) === (next.rotation ?? 0)
+      (prev.rotation ?? 0) === (next.rotation ?? 0) &&
+      (prev.opacity ?? 1) === (next.opacity ?? 1) &&
+      (prev.blendMode ?? 'source-over') === (next.blendMode ?? 'source-over')
     );
   }
 
@@ -329,7 +337,9 @@ export const Shape = memo(ShapeComponent, (prevProps, nextProps) => {
       prev.fill === next.fill &&
       prev.stroke === next.stroke &&
       prev.strokeWidth === next.strokeWidth &&
-      (prev.rotation ?? 0) === (next.rotation ?? 0)
+      (prev.rotation ?? 0) === (next.rotation ?? 0) &&
+      (prev.opacity ?? 1) === (next.opacity ?? 1) &&
+      (prev.blendMode ?? 'source-over') === (next.blendMode ?? 'source-over')
     );
   }
 
@@ -342,7 +352,9 @@ export const Shape = memo(ShapeComponent, (prevProps, nextProps) => {
       (prev.textDecoration ?? '') === (next.textDecoration ?? '') &&
       prev.fill === next.fill &&
       (prev.width || 0) === (next.width || 0) &&
-      (prev.rotation ?? 0) === (next.rotation ?? 0)
+      (prev.rotation ?? 0) === (next.rotation ?? 0) &&
+      (prev.opacity ?? 1) === (next.opacity ?? 1) &&
+      (prev.blendMode ?? 'source-over') === (next.blendMode ?? 'source-over')
     );
   }
 
@@ -354,7 +366,9 @@ export const Shape = memo(ShapeComponent, (prevProps, nextProps) => {
       prev.y2 === next.y2 &&
       prev.stroke === next.stroke &&
       prev.strokeWidth === next.strokeWidth &&
-      prev.lineCap === next.lineCap
+      prev.lineCap === next.lineCap &&
+      (prev.opacity ?? 1) === (next.opacity ?? 1) &&
+      (prev.blendMode ?? 'source-over') === (next.blendMode ?? 'source-over')
     );
   }
 

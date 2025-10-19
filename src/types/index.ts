@@ -18,6 +18,8 @@ export interface BaseShape {
   y: number;
   rotation: number;
   zIndex: number; // For layer ordering
+  opacity?: number; // 0-1, default 1
+  blendMode?: 'source-over' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'color-dodge' | 'color-burn' | 'hard-light' | 'soft-light' | 'difference' | 'exclusion';
   isLocked: boolean;
   lockedBy: string | null;
   lockedByName: string | null;
@@ -78,6 +80,8 @@ export interface ShapeUpdate {
   radius?: number;
   rotation?: number;
   zIndex?: number; // For layer ordering
+  opacity?: number;
+  blendMode?: 'source-over' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'color-dodge' | 'color-burn' | 'hard-light' | 'soft-light' | 'difference' | 'exclusion';
   fill?: string;
   stroke?: string;
   strokeWidth?: number;

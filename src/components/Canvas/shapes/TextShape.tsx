@@ -45,6 +45,19 @@ export const TextShape = forwardRef<Konva.Text, TextShapeProps>(
   ) => {
     const transformerRef = useRef<Konva.Transformer | null>(null);
 
+    // Apply blend mode directly to Konva node (react-konva doesn't support it as prop)
+    useEffect(() => {
+      if (ref && typeof ref !== 'function' && ref.current) {
+        const node = ref.current;
+        if (shape.blendMode) {
+          node.globalCompositeOperation(shape.blendMode);
+        } else {
+          node.globalCompositeOperation('source-over');
+        }
+        node.getLayer()?.batchDraw();
+      }
+    }, [shape.blendMode, ref, shape.id]);
+
     // Attach transformer when selected
     useEffect(() => {
       if (isSelected && transformerRef.current && ref && typeof ref !== 'function') {
@@ -91,7 +104,7 @@ export const TextShape = forwardRef<Konva.Text, TextShapeProps>(
           onDragStart={onDragStart}
           onDragMove={onDragMove}
           onDragEnd={onDragEnd}
-          opacity={opacity}
+          opacity={shape.opacity !== undefined ? shape.opacity : opacity}
           listening={!isLockedByOther}
           perfectDrawEnabled={false}
         />
