@@ -16,6 +16,7 @@ import {
   CANVAS_BOUNDS,
   DEFAULT_SHAPE_FILL,
   DEFAULT_SHAPE_STROKE,
+  MIN_ZOOM,
   MAX_ZOOM,
 } from '../../utils/constants';
 import { updateCursorPosition } from '../../services/presence';
@@ -76,6 +77,7 @@ interface CanvasProps {
 
 export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProps = {}) {
   const stageRef = useRef<Konva.Stage | null>(null);
+  const layerRef = useRef<Konva.Layer | null>(null); // NEW: Reference to main layer for performance control
   // Store Konva node references for direct position updates (bypassing React)
   const shapeNodesRef = useRef<Map<string, Konva.Node>>(new Map());
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -147,15 +149,27 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
     handleZoomIn,
     handleZoomOut,
     handleResetView,
+    isInteracting, // NEW: Track zoom/pan activity for performance
   } = useCanvasPanZoom({ stageRef, stageSize });
 
+  // ⚡ PERFORMANCE OPTIMIZATION: Disable mouse events during zoom/pan
+  // This reduces overhead without causing flickering
+  useEffect(() => {
+    const layer = layerRef.current;
+    if (!layer) return;
+    
+    layer.listening(!isInteracting);
+  }, [isInteracting]);
+
   // Viewport Culling Hook - only render visible shapes for performance
+  // During zoom/pan: Use tight culling (only visible area)
+  // When idle: Use loose culling (render extra buffer for smooth panning)
   const { visibleShapes, cullingStats } = useViewportCulling({
     shapes,
     stagePosition,
     stageScale,
     stageSize,
-    bufferMultiplier: 2, // Render 2x viewport in each direction (5x5 grid total)
+    bufferMultiplier: isInteracting ? 0.1 : 2, // Zoom: 0.1x = very tight, Idle: 2x = loose
   });
 
   // Memoize selected IDs Set for O(1) lookups instead of O(n) includes()
@@ -616,6 +630,86 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
   }, [stageSize, stageScale, setStagePosition]);
 
   /**
+   * Pan to a specific position on the canvas (canvas coordinates)
+   * Used by AI to show newly created shapes
+   */
+  const panToPosition = useCallback((x: number, y: number, shouldZoom: boolean = false, targetZoom?: number) => {
+    if (!stageRef.current) return;
+
+    // Calculate new stage position to center this point
+    const newX = stageSize.width / 2 - x * stageScale;
+    const newY = stageSize.height / 2 - y * stageScale;
+
+    setStagePosition({ x: newX, y: newY });
+
+    // Optional zoom adjustment
+    if (shouldZoom && targetZoom) {
+      setStageScale(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, targetZoom)));
+    }
+  }, [stageSize, stageScale, setStagePosition, setStageScale]);
+
+  /**
+   * Pan to show multiple shapes (used by AI after creation)
+   * Only pans if shapes are far from current viewport
+   */
+  const panToShapes = useCallback((shapeIds: string[], onlyIfFar: boolean = true) => {
+    if (shapeIds.length === 0 || !stageRef.current) return;
+
+    const targetShapes = shapes.filter(s => shapeIds.includes(s.id));
+    if (targetShapes.length === 0) return;
+
+    // Calculate bounding box of all target shapes
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    targetShapes.forEach(shape => {
+      let shapeMinX, shapeMinY, shapeMaxX, shapeMaxY;
+
+      if (shape.type === 'rectangle' || shape.type === 'text') {
+        shapeMinX = shape.x;
+        shapeMinY = shape.y;
+        shapeMaxX = shape.x + (shape.width || 100);
+        shapeMaxY = shape.y + (shape.type === 'rectangle' ? (shape.height || 100) : (shape.fontSize || 16));
+      } else if (shape.type === 'circle') {
+        shapeMinX = shape.x - shape.radius;
+        shapeMinY = shape.y - shape.radius;
+        shapeMaxX = shape.x + shape.radius;
+        shapeMaxY = shape.y + shape.radius;
+      } else if (shape.type === 'line') {
+        shapeMinX = Math.min(shape.x1, shape.x2);
+        shapeMinY = Math.min(shape.y1, shape.y2);
+        shapeMaxX = Math.max(shape.x1, shape.x2);
+        shapeMaxY = Math.max(shape.y1, shape.y2);
+      } else {
+        return; // Skip unknown types
+      }
+
+      minX = Math.min(minX, shapeMinX);
+      minY = Math.min(minY, shapeMinY);
+      maxX = Math.max(maxX, shapeMaxX);
+      maxY = Math.max(maxY, shapeMaxY);
+    });
+
+    // Calculate center of bounding box
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+
+    // Calculate current viewport center
+    const viewportCenterX = -stagePosition.x / stageScale + stageSize.width / (2 * stageScale);
+    const viewportCenterY = -stagePosition.y / stageScale + stageSize.height / (2 * stageScale);
+
+    // Calculate distance from viewport center to shapes center
+    const distance = Math.sqrt(
+      Math.pow(centerX - viewportCenterX, 2) + 
+      Math.pow(centerY - viewportCenterY, 2)
+    );
+
+    // Only pan if far away (> 2000px) or if onlyIfFar is false
+    if (!onlyIfFar || distance > 2000) {
+      panToPosition(centerX, centerY);
+    }
+  }, [shapes, stagePosition, stageSize, stageScale, panToPosition]);
+
+  /**
    * Export functions
    */
   const handleExportCanvasAsPNG = useCallback(() => {
@@ -745,13 +839,23 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
           // Read from system clipboard
           navigator.clipboard.readText()
             .then(text => {
+              let clipboardData;
+              
               try {
-                const clipboardData = JSON.parse(text);
+                clipboardData = JSON.parse(text);
                 
                 // Verify it's our data format
                 if (clipboardData.type !== 'collab-canvas-shapes' || !Array.isArray(clipboardData.shapes)) {
+                  // Not our format, silently ignore
                   return;
                 }
+              } catch (parseError) {
+                // Not valid JSON or not our format, silently ignore
+                // This is normal when pasting text into other inputs
+                return;
+              }
+              
+              try {
                 
                 // Calculate the center of copied shapes
                 let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -957,6 +1061,7 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
           minY: -stagePosition.y / stageScale,
           maxY: (-stagePosition.y + stageSize.height) / stageScale,
         }}
+        onPanToShapes={panToShapes}
         isChatExpanded={aiChatExpanded}
         isDebugMode={aiDebugMode}
         onChatExpandedChange={setAIChatExpanded}
@@ -1122,7 +1227,7 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
           y={stagePosition.y}
           style={{ cursor: getCursorStyle() }}
         >
-          <Layer name="main-layer">
+          <Layer name="main-layer" ref={layerRef}>
             {/* Canvas background - full 100k x 100k canvas (0 to 100,000) */}
             <Rect
               x={CANVAS_BOUNDS.MIN_X}

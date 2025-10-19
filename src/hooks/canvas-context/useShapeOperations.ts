@@ -7,6 +7,7 @@ import { useCallback } from 'react';
 import type { Shape, ShapeUpdate, User } from '../../types';
 import {
   createShape as createShapeInFirestore,
+  createShapesBatch as createShapesBatchInFirestore,
   updateShape as updateShapeInFirestore,
   deleteShape as deleteShapeInFirestore,
   deleteShapesBatch as deleteShapesBatchInFirestore,
@@ -107,6 +108,79 @@ export function useShapeOperations(
       }
     },
     [currentUser, shapes, shapeCounterRef, selectedIdsRef, setSelectedIds]
+  );
+
+  /**
+   * Adds multiple shapes to the canvas at once using batch write
+   * ⚡ ALL SHAPES CREATE SIMULTANEOUSLY (single Firebase transaction)
+   */
+  const addShapesBatch = useCallback(
+    async (
+      shapesData: Array<Omit<Shape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>>
+    ) => {
+      if (!currentUser) {
+        throw new Error('Must be logged in to create shapes');
+      }
+
+      if (shapesData.length === 0) {
+        return [];
+      }
+
+      // Calculate starting zIndex (new shapes go on top)
+      const maxZIndex = shapes.length > 0 
+        ? Math.max(...shapes.map(s => s.zIndex)) 
+        : -1;
+
+      // Prepare all shapes with IDs, names, and zIndexes
+      const newShapes: Shape[] = shapesData.map((shapeData, index) => {
+        // Increment counter and generate name
+        shapeCounterRef.current[shapeData.type] += 1;
+        const shapeNumber = shapeCounterRef.current[shapeData.type];
+        
+        let name: string;
+        if (shapeData.type === 'rectangle') {
+          name = `Rectangle ${shapeNumber}`;
+        } else if (shapeData.type === 'circle') {
+          name = `Circle ${shapeNumber}`;
+        } else if (shapeData.type === 'line') {
+          name = `Line ${shapeNumber}`;
+        } else {
+          name = `Text ${shapeNumber}`;
+        }
+
+        return {
+          ...shapeData,
+          id: generateId(),
+          name,
+          zIndex: maxZIndex + 1 + index,
+          isLocked: false,
+          lockedBy: null,
+          lockedByName: null,
+        } as Shape;
+      });
+
+      try {
+        // Firebase batch write limit is 500 operations
+        // Split into chunks if necessary
+        const BATCH_SIZE = 500;
+        const batches: Shape[][] = [];
+        
+        for (let i = 0; i < newShapes.length; i += BATCH_SIZE) {
+          batches.push(newShapes.slice(i, i + BATCH_SIZE));
+        }
+
+        // Execute all batches sequentially
+        for (const batch of batches) {
+          await createShapesBatchInFirestore(batch);
+        }
+
+        return newShapes.map(s => s.id);
+      } catch (error) {
+        console.error('Failed to batch add shapes:', error);
+        throw error;
+      }
+    },
+    [currentUser, shapes, shapeCounterRef]
   );
 
   /**
@@ -232,6 +306,7 @@ export function useShapeOperations(
 
   return {
     addShape,
+    addShapesBatch,
     updateShape,
     updateShapesBatchLocal,
     clearLocalUpdates,

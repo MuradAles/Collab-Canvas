@@ -40,13 +40,13 @@ export interface PositionViewportInfo {
 // ============================================================================
 
 const PRESET_POSITIONS: Record<string, ParsedPosition> = {
-  'center': { x: CANVAS_BOUNDS.CENTER_X, y: CANVAS_BOUNDS.CENTER_Y }, // (50000, 50000)
-  'top-left': { x: CANVAS_BOUNDS.MIN_X + 100, y: CANVAS_BOUNDS.MIN_Y + 100 }, // (100, 100)
-  'top-right': { x: CANVAS_BOUNDS.MAX_X - 100, y: CANVAS_BOUNDS.MIN_Y + 100 }, // (99900, 100)
-  'top-center': { x: CANVAS_BOUNDS.CENTER_X, y: CANVAS_BOUNDS.MIN_Y + 100 }, // (50000, 100)
-  'bottom-left': { x: CANVAS_BOUNDS.MIN_X + 100, y: CANVAS_BOUNDS.MAX_Y - 100 }, // (100, 99900)
-  'bottom-right': { x: CANVAS_BOUNDS.MAX_X - 100, y: CANVAS_BOUNDS.MAX_Y - 100 }, // (99900, 99900)
-  'bottom-center': { x: CANVAS_BOUNDS.CENTER_X, y: CANVAS_BOUNDS.MAX_Y - 100 }, // (50000, 99900)
+  'center': { x: CANVAS_BOUNDS.CENTER_X, y: CANVAS_BOUNDS.CENTER_Y }, // Canvas center
+  'top-left': { x: CANVAS_BOUNDS.MIN_X + 100, y: CANVAS_BOUNDS.MIN_Y + 100 }, // Near top-left corner
+  'top-right': { x: CANVAS_BOUNDS.MAX_X - 100, y: CANVAS_BOUNDS.MIN_Y + 100 }, // Near top-right corner
+  'top-center': { x: CANVAS_BOUNDS.CENTER_X, y: CANVAS_BOUNDS.MIN_Y + 100 }, // Top center
+  'bottom-left': { x: CANVAS_BOUNDS.MIN_X + 100, y: CANVAS_BOUNDS.MAX_Y - 100 }, // Near bottom-left corner
+  'bottom-right': { x: CANVAS_BOUNDS.MAX_X - 100, y: CANVAS_BOUNDS.MAX_Y - 100 }, // Near bottom-right corner
+  'bottom-center': { x: CANVAS_BOUNDS.CENTER_X, y: CANVAS_BOUNDS.MAX_Y - 100 }, // Bottom center
 };
 
 // ============================================================================

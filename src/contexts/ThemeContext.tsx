@@ -32,6 +32,7 @@ export interface ThemeContextType {
   setMode: (mode: ThemeMode) => void;
   updateColors: (colors: Partial<ThemeColors>) => void;
   resetColors: () => void;
+  saveToFirebase: () => Promise<void>;
 }
 
 // ============================================================================
@@ -147,6 +148,25 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     }
   }, [mode]);
 
+  /**
+   * Save current theme to Firebase
+   */
+  const saveToFirebase = useCallback(async () => {
+    if (!currentUser) return;
+    
+    try {
+      const themeRef = ref(rtdb, `users/${currentUser.uid}/theme`);
+      await set(themeRef, {
+        mode,
+        lightColors,
+        darkColors,
+      });
+    } catch (error) {
+      console.error('Failed to save theme to Firebase:', error);
+      throw error;
+    }
+  }, [currentUser, mode, lightColors, darkColors]);
+
   // ============================================================================
   // Persistence: Load from Firebase when user logs in
   // ============================================================================
@@ -174,11 +194,12 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   }, [currentUser]);
 
   // ============================================================================
-  // Persistence: Save to localStorage and Firebase when theme changes
+  // Persistence: Save to localStorage when theme changes
+  // Note: Firebase save is manual via saveToFirebase() for better control
   // ============================================================================
 
   useEffect(() => {
-    // Save to localStorage
+    // Save to localStorage for quick local access
     try {
       localStorage.setItem('theme-mode', mode);
       localStorage.setItem('theme-light-colors', JSON.stringify(lightColors));
@@ -186,21 +207,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     } catch (error) {
       console.error('Failed to save theme to localStorage:', error);
     }
-
-    // Save to Firebase if user is logged in
-    if (currentUser) {
-      try {
-        const themeRef = ref(rtdb, `users/${currentUser.uid}/theme`);
-        set(themeRef, {
-          mode,
-          lightColors,
-          darkColors,
-        });
-      } catch (error) {
-        console.error('Failed to save theme to Firebase:', error);
-      }
-    }
-  }, [mode, lightColors, darkColors, currentUser]);
+  }, [mode, lightColors, darkColors]);
 
   // ============================================================================
   // Apply CSS Variables to Document Root
@@ -245,7 +252,8 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     setMode,
     updateColors,
     resetColors,
-  }), [mode, colors, toggleMode, setMode, updateColors, resetColors]);
+    saveToFirebase,
+  }), [mode, colors, toggleMode, setMode, updateColors, resetColors, saveToFirebase]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

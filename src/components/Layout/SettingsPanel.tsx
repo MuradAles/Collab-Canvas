@@ -5,6 +5,7 @@
 
 import { useTheme } from '../../contexts/ThemeContext';
 import { useState, useEffect } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -12,30 +13,85 @@ interface SettingsPanelProps {
 }
 
 export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
-  const { mode, colors, toggleMode, updateColors, resetColors } = useTheme();
+  const { mode, colors, toggleMode, updateColors, resetColors, saveToFirebase } = useTheme();
+  const { currentUser } = useAuth();
   const [tempColors, setTempColors] = useState(colors);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   // Sync tempColors with actual colors when they change (e.g., after reset or theme switch)
   useEffect(() => {
     setTempColors(colors);
   }, [colors]);
 
+  // Clear save status after 3 seconds
+  useEffect(() => {
+    if (saveStatus !== 'idle') {
+      const timer = setTimeout(() => setSaveStatus('idle'), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [saveStatus]);
+
   if (!isOpen) return null;
 
   const handleColorChange = (key: keyof typeof colors, value: string) => {
     const newColors = { ...tempColors, [key]: value };
     setTempColors(newColors);
-    // Live update - apply immediately as user types/picks colors
+    // Live preview - apply immediately to see changes
     updateColors(newColors);
   };
 
-  const handleApplyColors = () => {
-    updateColors(tempColors);
+  const handleApplyColors = async () => {
+    if (!currentUser) {
+      // If not logged in, just apply locally
+      updateColors(tempColors);
+      setSaveStatus('success');
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveStatus('idle');
+    
+    try {
+      // Save to Firebase
+      await saveToFirebase();
+      setSaveStatus('success');
+    } catch (error) {
+      console.error('Failed to save theme:', error);
+      setSaveStatus('error');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleResetColors = () => {
+  const handleResetColors = async () => {
     resetColors();
     setTempColors(colors);
+    
+    // Save to Firebase after reset
+    if (currentUser) {
+      try {
+        await saveToFirebase();
+      } catch (error) {
+        console.error('Failed to save reset colors:', error);
+      }
+    }
+  };
+
+  const handleToggleMode = async () => {
+    toggleMode();
+    
+    // Save to Firebase after mode change
+    if (currentUser) {
+      // Wait a tick for the mode state to update
+      setTimeout(async () => {
+        try {
+          await saveToFirebase();
+        } catch (error) {
+          console.error('Failed to save theme mode:', error);
+        }
+      }, 0);
+    }
   };
 
   return (
@@ -73,7 +129,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
             </h3>
             <div className="flex gap-3">
               <button
-                onClick={() => mode === 'dark' && toggleMode()}
+                onClick={() => mode === 'dark' && handleToggleMode()}
                 className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${
                   mode === 'light'
                     ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
@@ -88,7 +144,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                 </div>
               </button>
               <button
-                onClick={() => mode === 'light' && toggleMode()}
+                onClick={() => mode === 'light' && handleToggleMode()}
                 className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${
                   mode === 'dark'
                     ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
@@ -248,12 +304,50 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
             </div>
 
             {/* Apply Button */}
-            <button
-              onClick={handleApplyColors}
-              className="mt-6 w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
-            >
-              Apply Colors
-            </button>
+            <div className="mt-6 space-y-2">
+              <button
+                onClick={handleApplyColors}
+                disabled={isSaving}
+                className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                {isSaving ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Saving...
+                  </>
+                ) : (
+                  currentUser ? 'Save to Cloud' : 'Apply Locally'
+                )}
+              </button>
+              
+              {/* Save Status Message */}
+              {saveStatus === 'success' && (
+                <div className="text-sm text-green-600 dark:text-green-400 text-center flex items-center justify-center gap-1">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  {currentUser ? 'Saved to cloud!' : 'Applied locally!'}
+                </div>
+              )}
+              
+              {saveStatus === 'error' && (
+                <div className="text-sm text-red-600 dark:text-red-400 text-center flex items-center justify-center gap-1">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                  Failed to save. Try again.
+                </div>
+              )}
+              
+              {!currentUser && (
+                <p className="text-xs text-theme-secondary text-center">
+                  Login to save settings across devices
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Preview Section */}

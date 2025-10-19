@@ -1,7 +1,8 @@
 /**
  * AI Notifications Service
  * Broadcasts AI activity to all users in real-time
- * Uses Firebase Realtime Database
+ * Uses Firebase Realtime Database for temporary broadcasts only
+ * Notifications are automatically deleted after 10 seconds
  */
 
 import {
@@ -11,6 +12,7 @@ import {
   query,
   limitToLast,
   off,
+  remove,
 } from 'firebase/database';
 import type { Unsubscribe } from 'firebase/database';
 import { rtdb } from './firebase';
@@ -44,6 +46,7 @@ export interface AINotificationCallback {
 
 /**
  * Broadcast an AI activity notification to all users
+ * Note: Notifications are temporary and auto-deleted after 10 seconds
  */
 export async function broadcastAIActivity(
   userId: string,
@@ -63,7 +66,21 @@ export async function broadcastAIActivity(
     };
     
     // Push notification (generates unique key)
-    await push(activityRef, notificationData);
+    const newNotificationRef = await push(activityRef, notificationData);
+    
+    // Auto-delete after 10 seconds (enough time for all connected users to receive it)
+    // This prevents accumulation in the database
+    setTimeout(async () => {
+      try {
+        if (newNotificationRef.key) {
+          const notificationToDelete = ref(rtdb, `ai-activity/${GLOBAL_CANVAS_ID}/${newNotificationRef.key}`);
+          await remove(notificationToDelete);
+        }
+      } catch (deleteError) {
+        // Silently fail - notification will eventually be cleaned up by other means
+        console.debug('Failed to auto-delete notification:', deleteError);
+      }
+    }, 10000); // 10 seconds
   } catch (error) {
     console.error('Failed to broadcast AI activity:', error);
     // Don't throw - notifications are non-critical
@@ -73,6 +90,7 @@ export async function broadcastAIActivity(
 /**
  * Subscribe to AI activity notifications
  * Only receives notifications from OTHER users (filters out own notifications)
+ * Note: Notifications are temporary broadcasts that auto-delete after 10 seconds
  * Returns unsubscribe function
  */
 export function subscribeToAIActivity(
@@ -81,8 +99,8 @@ export function subscribeToAIActivity(
 ): Unsubscribe {
   const activityRef = ref(rtdb, `ai-activity/${GLOBAL_CANVAS_ID}`);
   
-  // Query for recent notifications (last 10)
-  // This prevents getting flooded with old notifications on initial load
+  // Query for recent notifications (last 10, though most will be auto-deleted)
+  // This prevents getting flooded on initial load
   const recentQuery = query(activityRef, limitToLast(10));
   
   // Track if this is the initial load to avoid showing old notifications

@@ -7,7 +7,7 @@
 // Canvas Dimensions
 // ============================================================================
 
-// Endless Canvas: 25,000 x 25,000 pixels (0 to 25k)
+// Endless Canvas: 10,000 x 10,000 pixels (0 to 10k)
 export const CANVAS_WIDTH = 25000;
 export const CANVAS_HEIGHT = 25000;
 

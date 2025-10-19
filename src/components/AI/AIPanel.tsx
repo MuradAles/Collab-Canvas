@@ -76,8 +76,18 @@ export function AIPanel({
 
     setMessages(prev => [...prev, userMessage]);
 
+    // Add temporary "thinking" message
+    const thinkingId = (Date.now() + 1).toString();
+    const thinkingMessage: ChatMessage = {
+      id: thinkingId,
+      type: 'ai',
+      content: '🤔 Thinking...',
+      timestamp: Date.now(),
+    };
+    setMessages(prev => [...prev, thinkingMessage]);
+
     try {
-      // Build conversation history from messages
+      // Build conversation history from messages (exclude the thinking message)
       const history: ConversationHistory[] = messages.map(msg => ({
         role: msg.type === 'user' ? 'user' as const : 'assistant' as const,
         content: msg.content,
@@ -85,8 +95,9 @@ export function AIPanel({
 
       const response = await onSendMessage(content, history);
       
+      // Replace thinking message with actual AI response
       const aiMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
+        id: thinkingId, // Use same ID to replace
         type: 'ai',
         content: response.message,
         timestamp: Date.now(),
@@ -94,17 +105,18 @@ export function AIPanel({
         debugInfo: response.debugInfo,
       };
 
-      setMessages(prev => [...prev, aiMessage]);
+      setMessages(prev => prev.map(msg => msg.id === thinkingId ? aiMessage : msg));
 
     } catch (error) {
+      // Replace thinking message with error
       const errorMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
+        id: thinkingId, // Use same ID to replace
         type: 'error',
         content: error instanceof Error ? error.message : 'An error occurred',
         timestamp: Date.now(),
       };
 
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages(prev => prev.map(msg => msg.id === thinkingId ? errorMessage : msg));
     }
   };
 

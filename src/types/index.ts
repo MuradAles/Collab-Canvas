@@ -202,6 +202,7 @@ export interface CanvasContextType {
   isReconnecting: boolean;
   connectionStatus: 'connected' | 'disconnected' | 'reconnecting';
   addShape: (shape: Omit<Shape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>, options?: { skipAutoLock?: boolean }) => Promise<string>;
+  addShapesBatch: (shapes: Array<Omit<Shape, 'id' | 'name' | 'isLocked' | 'lockedBy' | 'lockedByName'>>) => Promise<string[]>;
   updateShape: (id: string, updates: ShapeUpdate, localOnly?: boolean) => Promise<void>;
   updateShapesBatchLocal: (updates: Array<{ id: string; updates: Partial<Shape> }>) => void;
   deleteShape: (id: string) => Promise<void>;

@@ -179,3 +179,32 @@
 .properties-panel-width-expanded {
   width: 256px;
 }
+
+/* Resize Handle */
+.resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background-color 150ms ease;
+}
+
+.resize-handle:hover,
+.resize-handle.resizing {
+  background-color: var(--color-accent);
+}
+
+.resize-handle-left {
+  left: 0;
+}
+
+.resize-handle-right {
+  right: 0;
+}
+
+/* Disable transitions during resize for smooth dragging */
+.resizing {
+  transition: none !important;
+}

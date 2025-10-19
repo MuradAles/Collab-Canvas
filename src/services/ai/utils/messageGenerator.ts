@@ -20,6 +20,7 @@ export function generateSuccessMessage(
   }
 
   const createCalls = toolCalls.filter(tc => tc.function.name === 'createShape');
+  const createMultipleCalls = toolCalls.filter(tc => tc.function.name === 'createMultipleShapes');
   const moveCalls = toolCalls.filter(tc => tc.function.name === 'moveShape');
   const queryCalls = toolCalls.filter(tc => tc.function.name === 'getCanvasState');
   const deleteCalls = toolCalls.filter(tc => tc.function.name === 'deleteShape');
@@ -34,6 +35,19 @@ export function generateSuccessMessage(
   
   if (createCalls.length > 0) {
     parts.push(`Created ${createCalls.length} shape${createCalls.length > 1 ? 's' : ''}`);
+  }
+
+  if (createMultipleCalls.length > 0) {
+    // Count total shapes created from bulk operations
+    const totalBulkShapes = createMultipleCalls.reduce((sum, call) => {
+      try {
+        const params = JSON.parse(call.function.arguments);
+        return sum + (params.count || 0);
+      } catch {
+        return sum;
+      }
+    }, 0);
+    parts.push(`Bulk created ${totalBulkShapes} shapes`);
   }
   
   if (moveCalls.length > 0) {

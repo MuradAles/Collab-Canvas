@@ -22,14 +22,25 @@ interface LayersPanelProps {
   onNavigateToShape?: (shapeId: string) => void;
 }
 
+const MIN_PANEL_WIDTH = 180;
+const MAX_PANEL_WIDTH = 400;
+const DEFAULT_PANEL_WIDTH = 240;
+
 function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderShapes, currentUserId, cullingStats, onNavigateToShape }: LayersPanelProps) {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(() => {
+    const saved = localStorage.getItem('layersPanelWidth');
+    return saved ? parseInt(saved, 10) : DEFAULT_PANEL_WIDTH;
+  });
+  const [isResizing, setIsResizing] = useState(false);
   
   // Refs for auto-scroll functionality
   const layerRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const resizeStartX = useRef<number>(0);
+  const resizeStartWidth = useRef<number>(0);
 
   const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
     setDraggedIndex(index);
@@ -89,7 +100,36 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
     setDragOverIndex(null);
   }, []);
 
+  // Resize handlers
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    resizeStartX.current = e.clientX;
+    resizeStartWidth.current = panelWidth;
+  }, [panelWidth]);
 
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleResizeMove = (e: MouseEvent) => {
+      const delta = e.clientX - resizeStartX.current;
+      const newWidth = Math.max(MIN_PANEL_WIDTH, Math.min(MAX_PANEL_WIDTH, resizeStartWidth.current + delta));
+      setPanelWidth(newWidth);
+    };
+
+    const handleResizeEnd = () => {
+      setIsResizing(false);
+      localStorage.setItem('layersPanelWidth', panelWidth.toString());
+    };
+
+    document.addEventListener('mousemove', handleResizeMove);
+    document.addEventListener('mouseup', handleResizeEnd);
+
+    return () => {
+      document.removeEventListener('mousemove', handleResizeMove);
+      document.removeEventListener('mouseup', handleResizeEnd);
+    };
+  }, [isResizing, panelWidth]);
 
   const getShapePreview = (shape: Shape) => {
     const getFillColor = () => {
@@ -251,9 +291,10 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
 
   return (
     <div 
-      className={`bg-theme-surface border-r border-theme flex flex-col h-full panel-width-transition ${
-        isCollapsed ? 'panel-width-collapsed' : 'panel-width-expanded'
+      className={`bg-theme-surface border-r border-theme flex flex-col h-full relative ${
+        isResizing ? 'resizing' : 'panel-width-transition'
       }`}
+      style={{ width: isCollapsed ? '64px' : `${panelWidth}px` }}
     >
       <style>{`
         /* Custom Scrollbar */
@@ -480,6 +521,15 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
           Drag to reorder • Top = front
         </p>
       </div>
+
+      {/* Resize Handle */}
+      {!isCollapsed && (
+        <div
+          className={`resize-handle resize-handle-right ${isResizing ? 'resizing' : ''}`}
+          onMouseDown={handleResizeStart}
+          title="Drag to resize panel"
+        />
+      )}
     </div>
   );
 }
