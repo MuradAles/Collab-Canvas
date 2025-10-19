@@ -15,7 +15,7 @@ interface TextEditPosition {
 interface TextEditingOverlayProps {
   editingTextId: string | null;
   textAreaValue: string;
-  textAreaRef: React.RefObject<HTMLTextAreaElement>;
+  textAreaRef: React.RefObject<HTMLTextAreaElement | null>;
   textEditPosition: TextEditPosition | null;
   stageScale: number;
   onTextChange: (value: string) => void;
