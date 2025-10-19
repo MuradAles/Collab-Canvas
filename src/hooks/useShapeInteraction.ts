@@ -447,15 +447,11 @@ export function useShapeInteraction({
                 const newX2 = initialPos.x2 + deltaX;
                 const newY2 = initialPos.y2 + deltaY;
                 
-                // CRITICAL: Update local state immediately for smooth visual feedback
-                updateShape(pending.shapeId, {
-                  x1: newX1,
-                  y1: newY1,
-                  x2: newX2,
-                  y2: newY2,
-                } as Partial<Shape>, true).catch(console.error); // localOnly: true
+                // CRITICAL FIX: DO NOT update local state during drag for single lines!
+                // Let Konva handle the visual drag (Group offset), only sync to Firebase for other users
+                // Updating local state triggers LineShape useEffect which resets Group to (0,0) and breaks drag
                 
-                // Update RTDB at 60 FPS (throttled)
+                // Update RTDB at 60 FPS (throttled) for real-time sync to other users
                 if (timeSinceLastFirebaseUpdate >= FIREBASE_THROTTLE_MS) {
                   updateDragPosition(
                     'global-canvas-v1',
