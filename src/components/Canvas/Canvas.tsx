@@ -34,7 +34,7 @@ import { Shape } from './Shape';
 import { PropertiesPanel } from './PropertiesPanel';
 import { LayersPanel } from './LayersPanel';
 import { CursorsLayer } from './CursorsLayer';
-import { FPSCounter } from './FPSCounter';
+// import { FPSCounter } from './FPSCounter';
 import { Tutorial } from './Tutorial';
 import { AICanvasIntegration } from '../AI/AICanvasIntegration';
 import { AICommandsModal } from '../AI/AICommandsModal';
