@@ -28,7 +28,6 @@ import {
   exportSelectedShapesAsPNG,
   exportSelectedShapesAsSVG,
 } from '../../utils/export';
-import { GridToggle } from './GridToggle';
 import { ToolSelector } from './ToolSelector';
 import { Shape } from './Shape';
 import { PropertiesPanel } from './PropertiesPanel';
@@ -72,9 +71,10 @@ export interface ExportFunctions {
 interface CanvasProps {
   onSetNavigateToUser?: (fn: (userId: string) => void) => void;
   onSetExportFunctions?: (fns: ExportFunctions) => void;
+  onSetGridToggle?: (showGrid: boolean, toggleFn: () => void) => void;
 }
 
-export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProps = {}) {
+export function Canvas({ onSetNavigateToUser, onSetExportFunctions, onSetGridToggle }: CanvasProps = {}) {
   const stageRef = useRef<Konva.Stage | null>(null);
   const layerRef = useRef<Konva.Layer | null>(null); // NEW: Reference to main layer for performance control
   // Store Konva node references for direct position updates (bypassing React)
@@ -774,6 +774,15 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
   ]);
 
   /**
+   * Expose grid toggle to parent via callback
+   */
+  useEffect(() => {
+    if (onSetGridToggle) {
+      onSetGridToggle(showGrid, handleToggleGrid);
+    }
+  }, [onSetGridToggle, showGrid, handleToggleGrid]);
+
+  /**
    * Keyboard shortcuts
    */
   useEffect(() => {
@@ -1159,10 +1168,6 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
             }}
           />
         )}
-
-        {/* Grid Toggle */}
-        <GridToggle showGrid={showGrid} onToggle={handleToggleGrid} />
-
 
         {/* Tool Selector - Moved to bottom */}
         <ToolSelector 
