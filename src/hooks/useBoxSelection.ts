@@ -172,7 +172,7 @@ export function useBoxSelection({
     const intersectingIds = intersectingShapes.map((s) => s.id);
 
     // Check if Shift is pressed for additive selection
-    const shiftPressed = window.event && (window.event as KeyboardEvent).shiftKey;
+    const shiftPressed = !!(window.event && (window.event as KeyboardEvent).shiftKey);
 
     if (intersectingIds.length > 0) {
       // ⚡ ATOMIC: Select all at once
