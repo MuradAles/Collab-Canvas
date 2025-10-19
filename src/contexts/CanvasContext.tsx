@@ -68,7 +68,8 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
     shapeCounterRef,
     connectionStatus,
     setConnectionStatus,
-    setIsReconnecting
+    setIsReconnecting,
+    setSelectedIds
   );
 
   // Shape CRUD Operations

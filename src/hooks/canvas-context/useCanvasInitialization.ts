@@ -15,6 +15,7 @@ import {
   subscribeToDragPositions,
   subscribeToSelectionDrags,
 } from '../../services/dragSync';
+import { subscribeToOfflineUsers } from '../../services/presence';
 
 export function useCanvasInitialization(
   currentUser: User | null,
@@ -26,7 +27,8 @@ export function useCanvasInitialization(
   shapeCounterRef: React.MutableRefObject<{ [key: string]: number }>,
   connectionStatus: 'connected' | 'disconnected' | 'reconnecting',
   setConnectionStatus: React.Dispatch<React.SetStateAction<'connected' | 'disconnected' | 'reconnecting'>>,
-  setIsReconnecting: React.Dispatch<React.SetStateAction<boolean>>
+  setIsReconnecting: React.Dispatch<React.SetStateAction<boolean>>,
+  setSelectedIds: React.Dispatch<React.SetStateAction<string[]>>
 ) {
   // RAF throttling for incoming drag updates to prevent FPS drops
   const dragUpdateRafRef = useRef<number | null>(null);
@@ -46,9 +48,14 @@ export function useCanvasInitialization(
     let unsubscribeShapes: (() => void) | null = null;
     let unsubscribeDrag: (() => void) | null = null;
     let unsubscribeSelectionDrag: (() => void) | null = null;
+    let unsubscribeOfflineUsers: (() => void) | null = null;
 
     const setupCanvas = async () => {
       try {
+        // Clear any stale selections when user comes online
+        // This handles the case where user selected shapes, closed browser, and came back
+        setSelectedIds([]);
+        
         // Initialize canvas document in Firestore
         await initializeCanvas();
 
@@ -148,6 +155,14 @@ export function useCanvasInitialization(
           setSelectionDrags(selections);
         });
 
+        // Subscribe to user offline events to unlock their shapes
+        unsubscribeOfflineUsers = subscribeToOfflineUsers((userId) => {
+          // When a user goes offline, unlock all their shapes
+          cleanupUserLocks(userId).catch((error) => {
+            console.error(`Failed to cleanup locks for offline user ${userId}:`, error);
+          });
+        });
+
       } catch (error) {
         console.error('Failed to setup canvas:', error);
         setLoading(false);
@@ -179,6 +194,9 @@ export function useCanvasInitialization(
       if (unsubscribeSelectionDrag) {
         unsubscribeSelectionDrag();
       }
+      if (unsubscribeOfflineUsers) {
+        unsubscribeOfflineUsers();
+      }
       // Cancel any pending drag RAF
       if (dragUpdateRafRef.current !== null) {
         cancelAnimationFrame(dragUpdateRafRef.current);
@@ -189,6 +207,6 @@ export function useCanvasInitialization(
         cleanupUserLocks(userId).catch(console.error);
       }
     };
-  }, [currentUser, connectionStatus, setShapes, setLoading, setDragPositions, setSelectionDrags, setLocalUpdates, shapeCounterRef, setConnectionStatus, setIsReconnecting]);
+  }, [currentUser, connectionStatus, setShapes, setLoading, setDragPositions, setSelectionDrags, setLocalUpdates, shapeCounterRef, setConnectionStatus, setIsReconnecting, setSelectedIds]);
 }
 

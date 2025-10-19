@@ -195,3 +195,62 @@ export function subscribeToPresence(
   };
 }
 
+/**
+ * Callback for offline user detection
+ */
+export interface OfflineUserCallback {
+  (userId: string): void;
+}
+
+/**
+ * Subscribe to user offline events
+ * Calls callback when a user goes from online to offline
+ * This is used to unlock shapes when users disconnect
+ * Returns unsubscribe function
+ */
+export function subscribeToOfflineUsers(
+  callback: OfflineUserCallback
+): Unsubscribe {
+  const sessionRef = ref(rtdb, `sessions/${GLOBAL_CANVAS_ID}`);
+  
+  // Track previous state to detect transitions
+  const previousState = new Map<string, boolean>();
+  
+  const handlePresenceUpdate = (snapshot: any) => {
+    const data = snapshot.val();
+    
+    if (!data) {
+      return;
+    }
+    
+    // Check each user's online status
+    Object.entries(data).forEach(([userId, userData]: [string, any]) => {
+      const wasOnline = previousState.get(userId);
+      const isOnline = userData.isOnline === true;
+      
+      // Detect offline transition (was online, now offline)
+      if (wasOnline === true && isOnline === false) {
+        console.log(`🔓 User ${userId} went offline, unlocking their shapes`);
+        callback(userId);
+      }
+      
+      // Update state
+      previousState.set(userId, isOnline);
+    });
+  };
+  
+  // Listen to presence changes
+  onValue(sessionRef, handlePresenceUpdate, (error: any) => {
+    // Silently ignore permission errors
+    if (error?.code === 'PERMISSION_DENIED' || error?.message?.includes('permission_denied')) {
+      return;
+    }
+    console.error('Error subscribing to offline users:', error);
+  });
+  
+  // Return unsubscribe function
+  return () => {
+    off(sessionRef, 'value', handlePresenceUpdate);
+  };
+}
+
