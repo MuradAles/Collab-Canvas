@@ -18,6 +18,10 @@ interface PropertiesPanelProps {
   currentUserId?: string;
 }
 
+const MIN_PANEL_WIDTH = 200;
+const MAX_PANEL_WIDTH = 500;
+const DEFAULT_PANEL_WIDTH = 256;
+
 function PropertiesPanelComponent({
   selectedShape,
   selectedCount,
@@ -27,6 +31,11 @@ function PropertiesPanelComponent({
   const [hasFill, setHasFill] = useState(true);
   const [hasStroke, setHasStroke] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(() => {
+    const saved = localStorage.getItem('propertiesPanelWidth');
+    return saved ? parseInt(saved, 10) : DEFAULT_PANEL_WIDTH;
+  });
+  const [isResizing, setIsResizing] = useState(false);
 
   // Check if the selected shape is locked by another user
   const isLockedByOther = Boolean(selectedShape?.isLocked && selectedShape.lockedBy !== currentUserId);
@@ -40,6 +49,8 @@ function PropertiesPanelComponent({
   const pendingUpdateRef = useRef<Partial<Shape> | null>(null);
   const latestFillColorRef = useRef<string>('');
   const latestStrokeColorRef = useRef<string>('');
+  const resizeStartX = useRef<number>(0);
+  const resizeStartWidth = useRef<number>(0);
 
   // Wrapped update function that prevents updates when locked
   const safeUpdate = useCallback(
@@ -106,6 +117,37 @@ function PropertiesPanelComponent({
       }
     };
   }, []);
+
+  // Resize handlers
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    resizeStartX.current = e.clientX;
+    resizeStartWidth.current = panelWidth;
+  }, [panelWidth]);
+
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleResizeMove = (e: MouseEvent) => {
+      const delta = resizeStartX.current - e.clientX;
+      const newWidth = Math.max(MIN_PANEL_WIDTH, Math.min(MAX_PANEL_WIDTH, resizeStartWidth.current + delta));
+      setPanelWidth(newWidth);
+    };
+
+    const handleResizeEnd = () => {
+      setIsResizing(false);
+      localStorage.setItem('propertiesPanelWidth', panelWidth.toString());
+    };
+
+    document.addEventListener('mousemove', handleResizeMove);
+    document.addEventListener('mouseup', handleResizeEnd);
+
+    return () => {
+      document.removeEventListener('mousemove', handleResizeMove);
+      document.removeEventListener('mouseup', handleResizeEnd);
+    };
+  }, [isResizing, panelWidth]);
 
   // Handle fill color change - update local state and throttle canvas update
   const handleFillColorChange = useCallback(
@@ -179,7 +221,8 @@ function PropertiesPanelComponent({
   if (isCollapsed) {
     return (
       <div 
-        className="h-full bg-theme-surface border-l border-theme flex flex-col items-center py-4 panel-width-transition properties-panel-width-collapsed"
+        className="h-full bg-theme-surface border-l border-theme flex flex-col items-center py-4 relative panel-width-transition"
+        style={{ width: '48px' }}
       >
         <button
           onClick={() => setIsCollapsed(false)}
@@ -205,7 +248,10 @@ function PropertiesPanelComponent({
   if (!selectedShape) {
     return (
       <div 
-        className="h-full bg-theme-surface border-l border-theme p-4 overflow-y-auto panel-width-transition properties-panel-width-expanded"
+        className={`h-full bg-theme-surface border-l border-theme p-4 overflow-y-auto relative ${
+          isResizing ? 'resizing' : 'panel-width-transition'
+        }`}
+        style={{ width: `${panelWidth}px` }}
       >
         <div className="flex items-center justify-between mb-4">
           <button
@@ -258,14 +304,40 @@ function PropertiesPanelComponent({
             </div>
           )}
         </div>
+
+        {/* Resize Handle */}
+        <div
+          className={`resize-handle resize-handle-left ${isResizing ? 'resizing' : ''}`}
+          onMouseDown={handleResizeStart}
+          title="Drag to resize panel"
+        />
       </div>
     );
   }
 
   return (
     <div 
-      className="h-full bg-theme-surface border-l border-theme p-4 overflow-y-auto panel-width-transition properties-panel-width-expanded scrollbar-thin"
+      className={`h-full bg-theme-surface border-l border-theme p-4 overflow-y-auto custom-scrollbar relative ${
+        isResizing ? 'resizing' : 'panel-width-transition'
+      }`}
+      style={{ width: `${panelWidth}px` }}
     >
+      <style>{`
+        /* Custom Scrollbar */
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(155, 155, 155, 0.5);
+          border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(155, 155, 155, 0.7);
+        }
+      `}</style>
       <div className="flex items-center justify-between mb-4">
         <button
           onClick={() => setIsCollapsed(true)}
@@ -398,6 +470,13 @@ function PropertiesPanelComponent({
           />
         )}
       </div>
+
+      {/* Resize Handle */}
+      <div
+        className={`resize-handle resize-handle-left ${isResizing ? 'resizing' : ''}`}
+        onMouseDown={handleResizeStart}
+        title="Drag to resize panel"
+      />
     </div>
   );
 }

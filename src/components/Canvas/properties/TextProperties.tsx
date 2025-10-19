@@ -204,7 +204,7 @@ function TextPropertiesComponent({
               onChange={(e) => onFillColorChange(e.target.value)}
               onBlur={onFillColorBlur}
               disabled={isLockedByOther}
-              className="w-12 h-10 rounded border border-theme cursor-pointer disabled:cursor-not-allowed"
+              className="w-10 h-10 rounded border border-theme cursor-pointer disabled:cursor-not-allowed flex-shrink-0"
             />
             <input
               type="text"

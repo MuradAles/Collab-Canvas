@@ -165,15 +165,15 @@ export function RecentColors({ currentColor, onColorSelect, onColorBlur, disable
         </button>
       </div>
 
-      {/* 2x6 Grid of Recent Colors */}
+      {/* 2x6 Grid of Recent Colors - Fixed Size */}
       <div className="grid grid-cols-6 gap-1.5">
         {displayColors.map((color, index) => (
-          <div key={`color-${index}-${color}`} className="relative group">
+          <div key={`color-${index}-${color}`} className="relative group w-7 h-7">
             <button
               onClick={() => handleColorClick(color)}
               disabled={disabled}
               className={`
-                w-full aspect-square rounded border-2 transition-all
+                w-7 h-7 rounded border-2 transition-all
                 ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:scale-110'}
                 ${color.toLowerCase() === currentColor.toLowerCase() ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-300 dark:border-gray-600'}
               `}

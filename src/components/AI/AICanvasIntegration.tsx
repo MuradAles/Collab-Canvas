@@ -19,6 +19,7 @@ interface AICanvasIntegrationProps {
   forceOpen?: boolean;
   viewportCenter?: { x: number; y: number };
   viewportBounds?: { minX: number; maxX: number; minY: number; maxY: number };
+  onPanToShapes?: (shapeIds: string[], onlyIfFar?: boolean) => void;
   isChatExpanded?: boolean;
   isDebugMode?: boolean;
   onChatExpandedChange?: (expanded: boolean) => void;
@@ -31,6 +32,7 @@ export function AICanvasIntegration({
   forceOpen, 
   viewportCenter, 
   viewportBounds,
+  onPanToShapes,
   isChatExpanded = false,
   isDebugMode = false,
 }: AICanvasIntegrationProps) {
@@ -74,7 +76,7 @@ export function AICanvasIntegration({
   }, [handleOpenPanel]);
 
   // Handle AI command
-  const handleSendMessage = async (message: string, history: { role: 'user' | 'assistant'; content: string }[] = []): Promise<AIResponse> => {
+  const handleSendMessage = async (message: string): Promise<AIResponse> => {
     if (!currentUser) {
       throw new Error('You must be logged in to use AI');
     }
@@ -88,13 +90,34 @@ export function AICanvasIntegration({
     setIsLoading(true);
 
     try {
-      // Send message to OpenAI with conversation history
-      const aiResponse = await sendAICommand(message, shapes, history, {
-        viewport: viewportCenter && viewportBounds ? {
-          center: viewportCenter,
-          bounds: viewportBounds,
-        } : undefined,
-      });
+      // Round viewport coordinates to make AI math easier (avoid decimal arithmetic errors)
+      const roundedViewport = viewportCenter && viewportBounds ? {
+        center: {
+          x: Math.round(viewportCenter.x),
+          y: Math.round(viewportCenter.y)
+        },
+        bounds: {
+          minX: Math.round(viewportBounds.minX),
+          maxX: Math.round(viewportBounds.maxX),
+          minY: Math.round(viewportBounds.minY),
+          maxY: Math.round(viewportBounds.maxY)
+        }
+      } : undefined;
+      
+      // Send message to OpenAI (each command is independent, no history)
+      const aiResponse = await sendAICommand(message, shapes, { viewport: roundedViewport });
+
+      // Console log for debugging
+      console.time('⏱️ AI Response Time');
+      console.log(`\n🎯 User Command: "${message}"`);
+      console.log(`🗺️ Viewport Center (original): (${viewportCenter?.x}, ${viewportCenter?.y})`);
+      console.log(`🗺️ Viewport Center (rounded for AI): (${roundedViewport?.center.x}, ${roundedViewport?.center.y})`);
+      console.log(`💬 AI Response: "${aiResponse.message}"`);
+      console.log(`🔧 Tool Calls: ${aiResponse.toolCalls.length}`);
+      console.timeEnd('⏱️ AI Response Time');
+      if (aiResponse.toolCalls.length > 0) {
+        console.log(`📋 Tools to execute:`, aiResponse.toolCalls.map(tc => tc.function.name));
+      }
 
       // Execute tool calls
       if (aiResponse.toolCalls.length > 0) {
@@ -104,10 +127,7 @@ export function AICanvasIntegration({
           currentUser,
           shapes,
           {
-            viewport: viewportCenter && viewportBounds ? {
-              center: viewportCenter,
-              bounds: viewportBounds,
-            } : undefined,
+            viewport: roundedViewport, // Use same rounded viewport that AI used
           }
         );
 
@@ -130,17 +150,28 @@ export function AICanvasIntegration({
           );
         }
 
-        // Build a better final message that includes created shape names
-        let finalMessage = executionResult.message;
+        // Auto-pan camera to show created shapes (Option B: only if far away)
+        if (executionResult.createdShapeIds.length > 0 && onPanToShapes) {
+          // Small delay to ensure Firestore sync completes
+          setTimeout(() => {
+            onPanToShapes(executionResult.createdShapeIds, true);
+          }, 1500);
+        }
+
+        // Use AI's natural response if available, otherwise use generated message
+        let finalMessage = aiResponse.message || executionResult.message;
         
-        // If shapes were created, append their actual names
+        // If shapes were created, append their actual names for reference
         if (executionResult.createdShapeNames.length > 0) {
-          finalMessage += `\n\n📝 Created shapes: ${executionResult.createdShapeNames.map(n => `"${n}"`).join(', ')}`;
+          finalMessage += `\n\n📝 Shapes: ${executionResult.createdShapeNames.map(n => `"${n}"`).join(', ')}`;
         }
         
-        // If it's a query result, use that
-        if (executionResult.message.includes('\n') && executionResult.message.includes('Found')) {
-          finalMessage = executionResult.message;
+        // If execution had errors, append them with details
+        if (executionResult.errors.length > 0) {
+          finalMessage += `\n\n⚠️ ${executionResult.errors.length} error${executionResult.errors.length > 1 ? 's' : ''} occurred:\n`;
+          executionResult.errors.forEach((error, index) => {
+            finalMessage += `${index + 1}. ${error}\n`;
+          });
         }
 
         return {
@@ -237,21 +268,6 @@ export function AICanvasIntegration({
   );
 }
 
-// Export state setters for ToolSelector to use
+// Export component only (hook is exported from src/hooks/useAIIntegration.ts)
 export { AICanvasIntegration as default };
-
-// Hook for using AI integration in other components
-export function useAIIntegration() {
-  const [openPanelTrigger, setOpenPanelTrigger] = useState<string | undefined>();
-
-  const openAIPanel = useCallback((message?: string) => {
-    setOpenPanelTrigger(message);
-  }, []);
-
-  return {
-    openAIPanel,
-    AIIntegrationComponent: AICanvasIntegration,
-    panelMessage: openPanelTrigger,
-  };
-}
 

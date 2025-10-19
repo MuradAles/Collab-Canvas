@@ -11,7 +11,8 @@ import type { Shape } from '../../types';
 // ============================================================================
 
 // AI Model Configuration - Change via env or per-call override
-const DEFAULT_AI_MODEL = import.meta.env.VITE_OPENAI_MODEL || 'gpt-4o-mini';
+const DEFAULT_AI_MODEL = import.meta.env.VITE_OPENAI_MODEL || 'gpt-4o'; // gpt-4o is faster than mini for function calling
+const DEFAULT_AI_TEMPERATURE = import.meta.env.VITE_DEFAULT_AI_TEMPERATURE || 0.7; // Higher for creativity while maintaining consistency
 
 // Non-authoritative suggestions; actual availability depends on your API access
 export const SUGGESTED_MODELS = [
@@ -52,11 +53,6 @@ export interface AIResponse {
   debugInfo: string[];
 }
 
-export interface ConversationMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
 // PositionParameter interface removed - defined in positionParser.ts
 
 // ============================================================================
@@ -79,12 +75,12 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           },
           position: {
             type: 'object',
-            description: 'Position where the shape should be created. Use preset names, exact coordinates, or relative positioning.',
+            description: 'Position where the shape should be created. Use preset names (canvas positions), exact coordinates, or relative positioning. If omitted, uses viewport center.',
             properties: {
               preset: {
                 type: 'string',
                 enum: ['center', 'top-left', 'top-right', 'bottom-left', 'bottom-right', 'top-center', 'bottom-center'],
-                description: 'Named position on the canvas',
+                description: 'Named position on the CANVAS (not viewport). "center" = canvas center or shape cluster center.',
               },
               x: {
                 type: 'number',
@@ -387,6 +383,67 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'createMultipleShapes',
+      description: 'Create LARGE numbers of shapes at once (bulk creation). ONLY use this for 50+ shapes. For smaller amounts (less than 50), use multiple createShape calls instead. Perfect for creating large patterns, stress testing, or filling the canvas. Can create up to 5000 shapes in one command.',
+      parameters: {
+        type: 'object',
+        properties: {
+          count: {
+            type: 'number',
+            description: 'Number of shapes to create (1-5000)',
+          },
+          shapeType: {
+            type: 'string',
+            enum: ['rectangle', 'circle', 'text', 'line', 'random', 'mixed'],
+            description: 'Type of shapes to create. "random" or "mixed" creates variety of all types.',
+          },
+          layout: {
+            type: 'string',
+            enum: ['grid', 'random', 'circular', 'horizontal', 'vertical', 'wave'],
+            description: 'How to arrange the shapes: grid (organized rows/columns), random (scattered), circular (spiral pattern), horizontal (line), vertical (column), wave (wave pattern)',
+          },
+          colorScheme: {
+            type: 'string',
+            description: 'Color scheme: "random" (variety), "gradient" (rainbow), "monochrome" (single color gradient), "warm" (reds/oranges/yellows), "cool" (blues/greens), or specific color like "#FF0000"',
+          },
+          sizeVariation: {
+            type: 'string',
+            enum: ['uniform', 'random', 'gradual'],
+            description: 'Size variation: uniform (all same size), random (varied sizes), gradual (gradually changing)',
+          },
+          area: {
+            type: 'string',
+            enum: ['viewport', 'canvas'],
+            description: 'Where to create shapes: viewport (current view), canvas (entire canvas)',
+          },
+          minSize: {
+            type: 'number',
+            description: 'Minimum size in pixels (default: 30)',
+          },
+          maxSize: {
+            type: 'number',
+            description: 'Maximum size in pixels (default: 100)',
+          },
+          spacing: {
+            type: 'number',
+            description: 'Spacing between shapes in pixels (default: 20)',
+          },
+          rows: {
+            type: 'number',
+            description: 'Number of rows for grid layout (optional, only used with layout: "grid")',
+          },
+          columns: {
+            type: 'number',
+            description: 'Number of columns for grid layout (optional, only used with layout: "grid")',
+          },
+        },
+        required: ['count'],
+      },
+    },
+  },
 ];
 
 // ============================================================================
@@ -399,7 +456,6 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
 export async function sendAICommand(
   userMessage: string,
   shapes: Shape[],
-  conversationHistory: ConversationMessage[] = [],
   extras?: {
     viewport?: {
       center: { x: number; y: number };
@@ -422,70 +478,71 @@ export async function sendAICommand(
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
       {
         role: 'system',
-        content: `You are an AI assistant that manipulates a collaborative canvas. The canvas bounds are dynamic; follow the ranges described in the context rather than assuming fixed sizes.
+        content: `Canvas AI. You can make MULTIPLE tool calls in ONE response.
 
-🎨 Available shapes (always allowed to create):
-- rectangle ("square" means width = height)
-- circle (radius)
-- text
-- line
+⚠️ CRITICAL - UI ELEMENTS NEED MULTIPLE SHAPES:
+Each UI element is built from multiple createShape calls. Examples:
+- Button = 2 shapes (rectangle + centered text)
+- Input field = 2-3 shapes (label above + input rectangle + optional placeholder inside)
+- Form = many shapes (container + N fields + button)
+You MUST make ALL the createShape calls together - do NOT make just 1 call!
 
-Correctness rules:
-1) Only manipulate shapes that exist in the canvas context below. Use exact names from the context.
-2) Defaults when unspecified:
-   - Rectangle: 100x100 (square if user says "square")
-   - Circle: radius 50 (you may pass size.width=100 → radius=50)
-   - Text: content "Text", fontSize 16
-   - Line: horizontal, length 100; x,y is the left endpoint
-3) Clamp all coordinates to the canvas bounds shown in context. For circles, x,y is center and must be ≥ radius from edges.
-4) Terminology mapping to tools:
-   - Rectangle "radius" means corner radius → use changeShapeStyle with cornerRadius (do NOT use resizeShape.radius for rectangles)
-   - Circle radius → use resizeShape with radius
-   - Rectangle size changes → use resizeShape with width/height
-   - Line length/orientation → createShape (length via size.width), moveShape for position
-5) Relative placement must include relativeTo + direction + offset (default 50).
-6) Prefer the minimum number of tool calls to fulfill a request.
+POSITIONING (IMPORTANT):
+Viewport center: (${extras?.viewport?.center.x || 0}, ${extras?.viewport?.center.y || 0})
 
-Styling at creation:
-- When the user specifies corner radius, stroke, or text color, set them during createShape (use color for fill, strokeColor/strokeWidth, cornerRadius). Avoid post-creation style calls unless needed across existing shapes.
+DEFAULT RULE: If user doesn't specify position → create at viewport center!
+- Single shape: center it at viewport (x = vcx - width/2, y = vcy - height/2)
+- Container/form: center it at viewport (containerX = vcx - width/2, containerY = vcy - height/2)
+- Then position elements inside: startX = containerX + 32, startY = containerY + 32
 
-Arrangements and spacing:
-- When arranging multiple items (e.g., "line up"), compute explicit x,y using actual dimensions from context.
-- Do not use presets for each item in sequences; anchor once and accumulate positions using previous widths/radii + a reasonable gap (e.g., 100).
+ALWAYS use explicit {x: NUM, y: NUM} coordinates, NOT presets.
+NEVER ask where to place something - just use viewport center if not specified!
 
-Viewport anchoring:
-- If the user does not specify position, anchor to the user's current viewport center.
-- For sequences/arrangements, use the viewport's center Y (horizontal) or center X (vertical) as the baseline.
-- Viewport info is provided below.
-- Always compute absolute x,y using the viewport center; do NOT use preset "center" for viewport anchoring. Only use presets if the user asks for canvas positions.
-- Convenience: let vcx = viewport.center.x, vcy = viewport.center.y. For centered rectangle width w: x = vcx - w/2. For stacking: start at vcy and add/subtract 16px per row.
+For text in buttons: textX = buttonX + (width/2), textY = buttonY + (height/2)
 
-Multi-create in one request (critical):
-- Do NOT reference shapes created earlier in the same request using relativeTo; they won't appear yet in the canvas context.
-- Instead, compute absolute x,y positions for every new element from the viewport anchor and the specified spacing.
-- Only use relativeTo for shapes that already exist in the current canvas context.
+UNIVERSAL LAYOUT RULES (CSS-like):
 
-UI wireframe interpretation (using shapes only, not real code):
-- If the user asks for UI like a "login page" or "navbar", create a wireframe using rectangles and text:
-  - Inputs: rectangles 320x44 with text labels above
-  - Buttons: rectangles 120x44 with text centered
-  - Headings: text (fontSize 24–32), body text 14–16
-  - Spacing: 16px between stacked elements, center on canvas unless directed otherwise
+Input Field Pattern:
+  1. Label text (optional): position ABOVE input, labelY = inputY - 20
+  2. Input rectangle: main field
+  3. Placeholder text (optional): INSIDE input, textX = inputX + 12, textY = inputY + (height/2)
+  Gap between label and input: 8-12px
 
-Current viewport:
-${extras?.viewport ? `center=(${extras.viewport.center.x}, ${extras.viewport.center.y}), bounds=[${extras.viewport.bounds.minX}..${extras.viewport.bounds.maxX}, ${extras.viewport.bounds.minY}..${extras.viewport.bounds.maxY}], vcx=${extras.viewport.center.x}, vcy=${extras.viewport.center.y}` : 'unknown'}
+Button Pattern:
+  1. Button rectangle
+  2. Button text: CENTERED at buttonX + (width/2), buttonY + (height/2)
 
-Current canvas state:
-${canvasContext}`,
+Form Pattern (universal for ANY fields):
+  1. Container rectangle (sized to fit all content)
+  2. For EACH field user requests:
+     - Label text (if field has a name)
+     - Input rectangle
+     - Placeholder text (optional)
+  3. Button at bottom
+  4. Button text centered in button
+  
+Vertical spacing: currentY starts at containerY + 32, increment by elementHeight + 16-24 after each element
+Apply modern defaults: rounded corners, subtle borders, good contrast, clean colors.
+
+PROCESS (universal for any UI):
+1. Parse user request: What elements do they want? (fields, buttons, text, etc.)
+2. Calculate sizes: container must fit all elements + spacing + padding
+3. Position container: centered at viewport using formula
+4. Loop through each element:
+   - Calculate its Y position (currentY)
+   - Create element shape(s) (rectangle, text, etc.)
+   - Increment currentY by element height + spacing
+5. Apply patterns: labels above inputs, text centered in buttons, etc.
+
+Standard spacing: 16-24px between elements, 32px padding inside containers
+
+Shapes: rectangle, circle, text, line. Only manipulate existing shapes by name.
+Current canvas: ${canvasContext}`,
       },
     ];
 
-    // Add conversation history (last 5 exchanges to keep context)
-    const recentHistory = conversationHistory.slice(-10); // Last 10 messages (5 exchanges)
-    messages.push(...recentHistory.map(msg => ({
-      role: msg.role,
-      content: msg.content,
-    })));
+    // No conversation history - each command is fresh and independent
+    // This prevents the AI from repeating previous mistakes
 
     // Add current user message
     messages.push({
@@ -503,8 +560,13 @@ ${canvasContext}`,
       }>;
     };
     let response: ChatCompletionLike;
-    const chosenModel = extras?.model || DEFAULT_AI_MODEL;
+    // Force gpt-4o for speed testing (bypassing DEFAULT_AI_MODEL)
+    const chosenModel = extras?.model || DEFAULT_AI_MODEL || 'gpt-4o';
     debugInfo.push(`[OpenAI] Model: ${chosenModel}`);
+    
+    // Log model being used
+    console.log(`🤖 Using AI Model: ${chosenModel} (forced for speed)`);
+    console.time('⏱️ OpenAI API Call');
     
     if (import.meta.env.DEV) {
       // Development: Use client-side OpenAI (API key exposed but only locally)
@@ -514,7 +576,7 @@ ${canvasContext}`,
       debugInfo.push(`[OpenAI] Using client-side call (development mode)`);
       response = await openai.chat.completions.create({
         model: chosenModel,
-        temperature: 0.3,
+        temperature: DEFAULT_AI_TEMPERATURE,
         messages,
         tools,
         tool_choice: 'auto',
@@ -529,7 +591,7 @@ ${canvasContext}`,
         },
         body: JSON.stringify({
           model: chosenModel,
-          temperature: 0.3,
+          temperature: DEFAULT_AI_TEMPERATURE,
           messages,
           tools,
           tool_choice: 'auto',
@@ -544,6 +606,7 @@ ${canvasContext}`,
       response = await apiResponse.json();
     }
 
+    console.timeEnd('⏱️ OpenAI API Call');
     debugInfo.push(`[OpenAI] Received response`);
 
     const choice = response.choices[0];
@@ -569,7 +632,35 @@ ${canvasContext}`,
     });
 
     // Get AI's text response
-    const aiMessage = message.content || 'Processing your request...';
+    // If AI didn't provide a message (shouldn't happen with updated prompt), generate a minimal one
+    let aiMessage = message.content || '';
+    
+    if (!aiMessage && toolCalls.length > 0) {
+      // Fallback: create a simple message based on tool calls
+      const actionVerbs: Record<string, string> = {
+        createShape: 'created',
+        moveShape: 'moved',
+        resizeShape: 'resized',
+        rotateShape: 'rotated',
+        changeShapeColor: 'changed the color of',
+        alignShapes: 'aligned',
+        changeLayerOrder: 'changed the layer order of',
+        changeShapeStyle: 'styled',
+        queryCanvas: 'analyzed',
+        deleteShape: 'deleted',
+      };
+      
+      const actions = toolCalls.map(tc => actionVerbs[tc.function.name] || 'updated');
+      const uniqueActions = [...new Set(actions)];
+      
+      if (uniqueActions.length === 1) {
+        aiMessage = `Done! I ${uniqueActions[0]} the shapes for you.`;
+      } else {
+        aiMessage = `All set! I've made the changes you requested.`;
+      }
+      
+      debugInfo.push(`[Warning] AI didn't provide a message, generated fallback: "${aiMessage}"`);
+    }
 
     return {
       message: aiMessage,

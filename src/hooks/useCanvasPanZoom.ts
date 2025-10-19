@@ -4,7 +4,7 @@
  * Updated for endless canvas - no pan limits!
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type Konva from 'konva';
 import {
   CANVAS_BOUNDS,
@@ -24,6 +24,34 @@ export function useCanvasPanZoom({ stageRef, stageSize }: UseCanvasPanZoomProps)
   const [isInitialPositionSet, setIsInitialPositionSet] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
+  
+  // Track if user is actively zooming/panning (for performance optimization)
+  const [isInteracting, setIsInteracting] = useState(false);
+  const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Mark interaction as active and set debounced timeout to mark as inactive
+  const markInteracting = useCallback(() => {
+    setIsInteracting(true);
+    
+    // Clear existing timeout
+    if (interactionTimeoutRef.current) {
+      clearTimeout(interactionTimeoutRef.current);
+    }
+    
+    // Set new timeout - mark as not interacting after 150ms of inactivity
+    interactionTimeoutRef.current = setTimeout(() => {
+      setIsInteracting(false);
+    }, 150);
+  }, []);
+  
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (interactionTimeoutRef.current) {
+        clearTimeout(interactionTimeoutRef.current);
+      }
+    };
+  }, []);
   
   // Helper to only update position if it actually changed (prevents infinite loops)
   const updateStagePosition = useCallback((newPos: { x: number; y: number }) => {
@@ -54,7 +82,7 @@ export function useCanvasPanZoom({ stageRef, stageSize }: UseCanvasPanZoomProps)
    */
   useEffect(() => {
     if (!isInitialPositionSet && stageSize.width > 0 && stageSize.height > 0) {
-      // Center on origin (50000, 50000) of the endless canvas at default zoom
+      // Center on canvas center point at default zoom
       const centerX = stageSize.width / 2 - (CANVAS_BOUNDS.CENTER_X) * DEFAULT_ZOOM;
       const centerY = stageSize.height / 2 - (CANVAS_BOUNDS.CENTER_Y) * DEFAULT_ZOOM;
       
@@ -69,6 +97,9 @@ export function useCanvasPanZoom({ stageRef, stageSize }: UseCanvasPanZoomProps)
   const handleWheel = useCallback(
     (e: Konva.KonvaEventObject<WheelEvent>) => {
       e.evt.preventDefault();
+      
+      // Mark as interacting for performance optimization
+      markInteracting();
 
       const stage = stageRef.current;
       if (!stage) return;
@@ -100,7 +131,7 @@ export function useCanvasPanZoom({ stageRef, stageSize }: UseCanvasPanZoomProps)
       setStageScale(newScale);
       updateStagePosition(constrainedPos);
     },
-    [stageRef, constrainPosition, updateStagePosition]
+    [stageRef, constrainPosition, updateStagePosition, markInteracting]
   );
 
   /**
@@ -131,6 +162,9 @@ export function useCanvasPanZoom({ stageRef, stageSize }: UseCanvasPanZoomProps)
   const handlePanMove = useCallback(() => {
     if (!isPanning || !panStart) return;
     
+    // Mark as interacting for performance optimization
+    markInteracting();
+    
     const stage = stageRef.current;
     if (!stage) return;
     
@@ -145,7 +179,7 @@ export function useCanvasPanZoom({ stageRef, stageSize }: UseCanvasPanZoomProps)
     const constrainedPos = constrainPosition(newPos);
     
     updateStagePosition(constrainedPos);
-  }, [isPanning, panStart, stageRef, constrainPosition, updateStagePosition]);
+  }, [isPanning, panStart, stageRef, constrainPosition, updateStagePosition, markInteracting]);
 
   const handlePanEnd = useCallback(() => {
     setIsPanning(false);
@@ -156,6 +190,8 @@ export function useCanvasPanZoom({ stageRef, stageSize }: UseCanvasPanZoomProps)
    * Zoom controls
    */
   const handleZoomIn = useCallback(() => {
+    markInteracting();
+    
     const stage = stageRef.current;
     if (!stage) return;
 
@@ -182,9 +218,11 @@ export function useCanvasPanZoom({ stageRef, stageSize }: UseCanvasPanZoomProps)
 
     setStageScale(newScale);
     updateStagePosition(constrainedPos);
-  }, [stageRef, stageSize, constrainPosition, updateStagePosition]);
+  }, [stageRef, stageSize, constrainPosition, updateStagePosition, markInteracting]);
 
   const handleZoomOut = useCallback(() => {
+    markInteracting();
+    
     const stage = stageRef.current;
     if (!stage) return;
 
@@ -211,15 +249,17 @@ export function useCanvasPanZoom({ stageRef, stageSize }: UseCanvasPanZoomProps)
 
     setStageScale(newScale);
     updateStagePosition(constrainedPos);
-  }, [stageRef, stageSize, constrainPosition, updateStagePosition]);
+  }, [stageRef, stageSize, constrainPosition, updateStagePosition, markInteracting]);
 
   const handleResetView = useCallback(() => {
+    markInteracting();
+    
     setStageScale(DEFAULT_ZOOM);
-    // Center on origin (50000, 50000) of the endless canvas
+    // Center on canvas center point
     const centerX = stageSize.width / 2 - (CANVAS_BOUNDS.CENTER_X) * DEFAULT_ZOOM;
     const centerY = stageSize.height / 2 - (CANVAS_BOUNDS.CENTER_Y) * DEFAULT_ZOOM;
     updateStagePosition({ x: centerX, y: centerY });
-  }, [stageSize, updateStagePosition]);
+  }, [stageSize, updateStagePosition, markInteracting]);
 
   return {
     stageScale,
@@ -227,6 +267,7 @@ export function useCanvasPanZoom({ stageRef, stageSize }: UseCanvasPanZoomProps)
     setStageScale,
     setStagePosition: updateStagePosition,
     isPanning,
+    isInteracting, // NEW: True during zoom/pan, false after 150ms of inactivity
     handleWheel,
     handlePanStart,
     handlePanMove,

@@ -74,6 +74,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
   // Shape CRUD Operations
   const {
     addShape,
+    addShapesBatch,
     updateShape,
     updateShapesBatchLocal,
     clearLocalUpdates,
@@ -129,6 +130,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       isReconnecting,
       connectionStatus,
       addShape,
+      addShapesBatch,
       updateShape,
       updateShapesBatchLocal,
       deleteShape,
@@ -153,6 +155,7 @@ export function CanvasProvider({ children }: CanvasProviderProps) {
       isReconnecting,
       connectionStatus,
       addShape,
+      addShapesBatch,
       updateShape,
       updateShapesBatchLocal,
       deleteShape,

@@ -105,3 +105,17 @@ export interface ChangeShapeStyleParams {
   lineCap?: 'butt' | 'round' | 'square';
 }
 
+export interface CreateMultipleShapesParams {
+  count: number;
+  shapeType?: 'rectangle' | 'circle' | 'text' | 'line' | 'random' | 'mixed';
+  layout?: 'grid' | 'random' | 'circular' | 'horizontal' | 'vertical' | 'wave';
+  colorScheme?: 'random' | 'gradient' | 'monochrome' | 'warm' | 'cool' | string;
+  sizeVariation?: 'uniform' | 'random' | 'gradual';
+  area?: 'viewport' | 'canvas';
+  minSize?: number;
+  maxSize?: number;
+  spacing?: number;
+  rows?: number;
+  columns?: number;
+}
+

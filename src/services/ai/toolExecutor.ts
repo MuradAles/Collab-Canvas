@@ -7,6 +7,7 @@ import type { Shape, CanvasContextType, User } from '../../types';
 import type { ToolCall } from './openai';
 import type { ExecutionResult } from './types/toolTypes';
 import { executeCreateShape } from './tools/createShape';
+import { executeCreateMultipleShapes } from './tools/createMultipleShapes';
 import { executeMoveShape } from './tools/moveShape';
 import { executeGetCanvasState } from './tools/queryCanvas';
 import { executeDeleteShape } from './tools/deleteShape';
@@ -60,7 +61,24 @@ export async function executeToolCalls(
     
     try {
       const params = JSON.parse(toolCall.function.arguments);
-      debugLog.push(`[Tool ${i + 1}/${toolCalls.length}] ${toolCall.function.name}(${JSON.stringify(params)})`);
+      const logMessage = `[Tool ${i + 1}/${toolCalls.length}] ${toolCall.function.name}`;
+      debugLog.push(`${logMessage}(${JSON.stringify(params)})`);
+      
+      // Console log for debugging
+      console.log(`\n🤖 AI Tool Call ${i + 1}/${toolCalls.length}:`);
+      console.log(`   Tool: ${toolCall.function.name}`);
+      console.log(`   Params:`, params);
+      
+      // Show position details for createShape calls
+      if (toolCall.function.name === 'createShape' && params.position) {
+        console.log(`   📍 Position:`, JSON.stringify(params.position, null, 2));
+        if (params.size) {
+          console.log(`   📏 Size:`, JSON.stringify(params.size, null, 2));
+        }
+        if (params.text) {
+          console.log(`   📝 Text: "${params.text}"`);
+        }
+      }
 
       switch (toolCall.function.name) {
         case 'createShape': {
@@ -76,8 +94,34 @@ export async function executeToolCalls(
           if (result.shapeId) {
             createdShapeIds.push(result.shapeId);
             successCount++;
+            console.log(`   ✅ Success: Created shape ID ${result.shapeId}`);
           } else if (result.error) {
             errors.push(result.error);
+            console.log(`   ❌ Error: ${result.error}`);
+          }
+          break;
+        }
+
+        case 'createMultipleShapes': {
+          const result = await executeCreateMultipleShapes(
+            params,
+            canvasContext,
+            shapes,
+            debugLog,
+            extras?.viewport
+              ? { center: extras.viewport.center, bounds: extras.viewport.bounds }
+              : undefined
+          );
+          if (result.count > 0) {
+            // Add placeholder IDs for each created shape
+            for (let i = 0; i < result.count; i++) {
+              createdShapeIds.push(`bulk-${i}`);
+            }
+            successCount++;
+            console.log(`   ✅ Success: Created ${result.count} shapes`);
+          } else if (result.error) {
+            errors.push(result.error);
+            console.log(`   ❌ Error: ${result.error}`);
           }
           break;
         }
@@ -250,6 +294,15 @@ export async function executeToolCalls(
 
   // Generate user-friendly success message
   const message = generateSuccessMessage(toolCalls, successCount, errors);
+  
+  // Console summary
+  console.log(`\n📊 Execution Summary:`);
+  console.log(`   Total tools executed: ${toolCalls.length}`);
+  console.log(`   Successful: ${successCount}`);
+  console.log(`   Errors: ${errors.filter(e => !e.startsWith('[Query Result]')).length}`);
+  if (createdShapeNames.length > 0) {
+    console.log(`   Created shapes: ${createdShapeNames.join(', ')}`);
+  }
 
   // Extract query results from errors array (they were marked with [Query Result])
   const queryResults = errors.filter(e => e.startsWith('[Query Result]')).map(e => e.replace('[Query Result] ', ''));

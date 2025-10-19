@@ -17,6 +17,7 @@ import {
   DEFAULT_TEXT_SIZE,
   DEFAULT_TEXT_FONT,
   DEFAULT_TEXT_FILL,
+  CANVAS_BOUNDS,
 } from '../utils/constants';
 
 interface NewShapePreview {
@@ -224,8 +225,8 @@ export function useShapeDrawing({
             const centerY = currentShapePreview.y + currentShapePreview.height / 2;
 
             // Clamp circle center to bounds (accounting for radius)
-            const clampedCenterX = clampToCanvasBounds(centerX, -50000 + radius, 50000 - radius);
-            const clampedCenterY = clampToCanvasBounds(centerY, -50000 + radius, 50000 - radius);
+            const clampedCenterX = clampToCanvasBounds(centerX, CANVAS_BOUNDS.MIN_X + radius, CANVAS_BOUNDS.MAX_X - radius);
+            const clampedCenterY = clampToCanvasBounds(centerY, CANVAS_BOUNDS.MIN_Y + radius, CANVAS_BOUNDS.MAX_Y - radius);
 
             if (clampedCenterX !== centerX || clampedCenterY !== centerY) {
               console.warn('Circle position clamped to canvas bounds');

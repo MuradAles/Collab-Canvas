@@ -80,6 +80,12 @@ export function AICommandsModal({ isOpen, onClose }: AICommandsModalProps) {
             <p className="text-xs text-theme-secondary leading-relaxed">Create rectangles, circles, lines, text at any position</p>
           </div>
 
+          {/* Bulk Creation */}
+          <div>
+            <h4 className="font-semibold text-violet-600 dark:text-violet-400 text-xs mb-1">✨ Bulk Create</h4>
+            <p className="text-xs text-theme-secondary leading-relaxed">Create hundreds of shapes at once in grids, patterns, or random layouts</p>
+          </div>
+
           {/* Move Shapes */}
           <div>
             <h4 className="font-semibold text-green-600 dark:text-green-400 text-xs mb-1">↔️ Move Shapes</h4>
