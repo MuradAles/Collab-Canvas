@@ -16,10 +16,13 @@ function AppContent() {
   const { currentUser, loading } = useAuth();
   const [navigateToUser, setNavigateToUser] = useState<((userId: string) => void) | null>(null);
   const [exportFunctions, setExportFunctions] = useState<ExportFunctions | null>(null);
+  const [showGrid, setShowGrid] = useState(true);
+  const [onToggleGrid, setOnToggleGrid] = useState<(() => void) | null>(null);
   
   // Use refs to prevent creating new function references on every render
   const navigateToUserRef = useRef<((userId: string) => void) | null>(null);
   const exportFunctionsRef = useRef<ExportFunctions | null>(null);
+  const onToggleGridRef = useRef<(() => void) | null>(null);
 
   // Stable callbacks for Canvas props
   const handleSetNavigateToUser = useCallback((fn: (userId: string) => void) => {
@@ -33,6 +36,14 @@ function AppContent() {
     if (exportFunctionsRef.current !== fns) {
       exportFunctionsRef.current = fns;
       setExportFunctions(fns);
+    }
+  }, []);
+
+  const handleSetGridToggle = useCallback((gridShown: boolean, toggleFn: () => void) => {
+    setShowGrid(gridShown);
+    if (onToggleGridRef.current !== toggleFn) {
+      onToggleGridRef.current = toggleFn;
+      setOnToggleGrid(() => toggleFn);
     }
   }, []);
 
@@ -58,11 +69,17 @@ function AppContent() {
     <PresenceProvider>
       <CanvasProvider>
         <div className="h-screen w-screen flex flex-col overflow-hidden">
-          <Navbar onNavigateToUser={navigateToUser} exportFunctions={exportFunctions} />
+          <Navbar 
+            onNavigateToUser={navigateToUser} 
+            exportFunctions={exportFunctions}
+            showGrid={showGrid}
+            onToggleGrid={onToggleGrid}
+          />
           <main className="flex-1 bg-theme-background overflow-hidden">
             <Canvas
               onSetNavigateToUser={handleSetNavigateToUser}
               onSetExportFunctions={handleSetExportFunctions}
+              onSetGridToggle={handleSetGridToggle}
             />
           </main>
         </div>

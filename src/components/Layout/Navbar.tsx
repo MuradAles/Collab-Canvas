@@ -14,9 +14,11 @@ import type { ExportFunctions } from '../Canvas/Canvas';
 interface NavbarProps {
   onNavigateToUser?: ((userId: string) => void) | null;
   exportFunctions?: ExportFunctions | null;
+  showGrid?: boolean;
+  onToggleGrid?: (() => void) | null;
 }
 
-export function Navbar({ onNavigateToUser, exportFunctions }: NavbarProps = {}) {
+export function Navbar({ onNavigateToUser, exportFunctions, showGrid, onToggleGrid }: NavbarProps = {}) {
   const { currentUser, logout } = useAuth();
   const { onlineUsers } = usePresenceContext();
   const { connectionStatus, isReconnecting } = useCanvasContext();
@@ -134,6 +136,33 @@ export function Navbar({ onNavigateToUser, exportFunctions }: NavbarProps = {}) 
                 </div>
               );
             })()}
+
+            {/* Grid Toggle Button */}
+            <button
+              onClick={() => onToggleGrid?.()}
+              className={`
+                relative group p-2 rounded-lg transition-all duration-200
+                ${showGrid 
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                  : 'hover:bg-theme-surface-hover text-theme-secondary hover:text-theme-primary'
+                }
+              `}
+              title={showGrid ? 'Hide Grid' : 'Show Grid'}
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"
+                />
+              </svg>
+            </button>
 
             {/* Export Button with Dropdown */}
             <div className="relative">
