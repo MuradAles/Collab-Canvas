@@ -34,7 +34,7 @@ import { Shape } from './Shape';
 import { PropertiesPanel } from './PropertiesPanel';
 import { LayersPanel } from './LayersPanel';
 import { CursorsLayer } from './CursorsLayer';
-import { FPSCounter } from './FPSCounter';
+// import { FPSCounter } from './FPSCounter';
 import { Tutorial } from './Tutorial';
 import { AICanvasIntegration } from '../AI/AICanvasIntegration';
 import { AICommandsModal } from '../AI/AICommandsModal';
@@ -1145,7 +1145,7 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
               verticalAlign: 'top',
               overflow: 'hidden',
               overflowY: 'hidden',
-              zIndex: 1000,
+              zIndex: 500,
               boxSizing: 'border-box',
               whiteSpace: 'pre-wrap',
               wordWrap: 'break-word',
@@ -1454,7 +1454,7 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
                 left: `${screenCenterX}px`,
                 top: `${screenY}px`,
                 transform: 'translateX(-50%)',
-                zIndex: 1000,
+                zIndex: 100,
                 pointerEvents: 'none',
               }}
               className="flex items-center gap-1 bg-theme-surface rounded-lg shadow-lg border border-theme p-1"
@@ -1525,7 +1525,7 @@ export function Canvas({ onSetNavigateToUser, onSetExportFunctions }: CanvasProp
         })()}
 
         {/* FPS Counter */}
-        <FPSCounter />
+        {/* <FPSCounter /> */}
 
       {/* Tutorial Button - Right Bottom Corner */}
       <div className="fixed right-4 bottom-4 z-[100]">

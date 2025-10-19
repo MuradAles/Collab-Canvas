@@ -95,7 +95,7 @@ export function ZIndexControls({
         left: `${screenCenterX}px`,
         top: `${screenY}px`,
         transform: 'translateX(-50%)',
-        zIndex: 1000,
+        zIndex: 100,
         pointerEvents: 'none',
       }}
       className="flex items-center gap-1 bg-theme-surface rounded-lg shadow-lg border border-theme p-1"

@@ -89,7 +89,7 @@ export function TextEditingOverlay({
         verticalAlign: 'top',
         overflow: 'hidden',
         overflowY: 'hidden',
-        zIndex: 1000,
+        zIndex: 500,
         boxSizing: 'border-box',
         whiteSpace: 'pre-wrap',
         wordWrap: 'break-word',

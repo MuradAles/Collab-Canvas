@@ -687,7 +687,7 @@ function buildCanvasContext(shapes: Shape[]): string {
     return 'The canvas is currently empty.';
   }
 
-  const shapeDescriptions = shapes.map((shape) => {
+  const shapeDescriptions = shapes.map((shape): string => {
     const locked = shape.isLocked ? ` (locked by ${shape.lockedByName})` : '';
     
     if (shape.type === 'line') {
@@ -702,7 +702,7 @@ function buildCanvasContext(shapes: Shape[]): string {
       return `- "${shape.name}" [id=${shape.id}]: Text "${shape.text}" at (${shape.x}, ${shape.y}), size ${shape.fontSize}${locked}`;
     }
     
-    // Rectangle
+    // shape.type === 'rectangle'
     return `- "${shape.name}" [id=${shape.id}]: Rectangle at (${shape.x}, ${shape.y}), size ${shape.width}x${shape.height}, color ${shape.fill}${locked}`;
   });
 

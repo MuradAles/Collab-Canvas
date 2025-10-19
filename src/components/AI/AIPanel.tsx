@@ -136,7 +136,7 @@ export function AIPanel({
         bottom: '110px',
         left: '50%',
         transform: 'translateX(-50%)',
-        zIndex: 50,
+        zIndex: 2000,
         maxWidth: '500px',
         animation: 'slideUpPanel 0.3s ease-out forwards',
         opacity: 0,
@@ -167,7 +167,7 @@ export function AIPanel({
           }}
         >
           {/* Messages */}
-          <div className="overflow-y-auto px-4 py-3 space-y-3 scrollbar-thin bg-theme-surface-hover" style={{ maxHeight: '400px' }}>
+          <div className="overflow-y-auto px-4 py-3 space-y-3 scrollbar-thin" style={{ maxHeight: '400px' }}>
             {messages.length === 0 ? (
               <div className="text-center text-theme-secondary text-sm py-8">
                 <p>No messages yet</p>
