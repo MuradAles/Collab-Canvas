@@ -222,7 +222,7 @@ function PropertiesPanelComponent({
     return (
       <div 
         className="h-full bg-theme-surface border-l border-theme flex flex-col items-center py-4 relative panel-width-transition"
-        style={{ width: '48px' }}
+        style={{ width: '48px', zIndex: 2000 }}
       >
         <button
           onClick={() => setIsCollapsed(false)}
@@ -251,7 +251,7 @@ function PropertiesPanelComponent({
         className={`h-full bg-theme-surface border-l border-theme p-4 overflow-y-auto relative ${
           isResizing ? 'resizing' : 'panel-width-transition'
         }`}
-        style={{ width: `${panelWidth}px` }}
+        style={{ width: `${panelWidth}px`, zIndex: 2000 }}
       >
         <div className="flex items-center justify-between mb-4">
           <button
@@ -320,7 +320,7 @@ function PropertiesPanelComponent({
       className={`h-full bg-theme-surface border-l border-theme p-4 overflow-y-auto custom-scrollbar relative ${
         isResizing ? 'resizing' : 'panel-width-transition'
       }`}
-      style={{ width: `${panelWidth}px` }}
+      style={{ width: `${panelWidth}px`, zIndex: 2000 }}
     >
       <style>{`
         /* Custom Scrollbar */

@@ -294,7 +294,7 @@ function LayersPanelComponent({ shapes, selectedIds, onSelectShape, onReorderSha
       className={`bg-theme-surface border-r border-theme flex flex-col h-full relative ${
         isResizing ? 'resizing' : 'panel-width-transition'
       }`}
-      style={{ width: isCollapsed ? '64px' : `${panelWidth}px` }}
+      style={{ width: isCollapsed ? '64px' : `${panelWidth}px`, zIndex: 2000 }}
     >
       <style>{`
         /* Custom Scrollbar */

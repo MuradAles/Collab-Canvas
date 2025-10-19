@@ -30,6 +30,89 @@ export const AIInput = forwardRef<HTMLInputElement, AIInputProps>(
       setValue('');
     };
 
+    const [isRecording, setIsRecording] = useState(false);
+    const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+    // no external usage; keep local inside onstop
+
+    const startRecording = async () => {
+      if (isLoading || isRecording) return;
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mr = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        const localChunks: BlobPart[] = [];
+        mr.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) {
+            localChunks.push(e.data);
+          }
+        };
+        mr.onstop = async () => {
+          const blob = new Blob(localChunks, { type: 'audio/webm' });
+          const transcribeViaOpenAI = async (): Promise<string | null> => {
+            try {
+              if (!(import.meta.env.DEV && import.meta.env.VITE_OPENAI_API_KEY)) return null;
+              const { default: OpenAI } = await import('openai');
+              const client = new OpenAI({
+                apiKey: import.meta.env.VITE_OPENAI_API_KEY as string,
+                dangerouslyAllowBrowser: true,
+              });
+              const file = new File([blob], 'audio.webm', { type: 'audio/webm' });
+              const result = await client.audio.transcriptions.create({
+                model: 'gpt-4o-mini-transcribe',
+                file,
+              });
+              const text = (result as unknown as { text?: string }).text;
+              return typeof text === 'string' ? text : null;
+            } catch {
+              return null;
+            }
+          };
+
+          const transcribeViaServer = async (): Promise<string | null> => {
+            try {
+              const arrayBuffer = await blob.arrayBuffer();
+              const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+              const resp = await fetch('/api/stt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ audioBase64: base64, mimeType: 'audio/webm' }),
+              });
+              if (!resp.ok) return null;
+              const data = await resp.json();
+              return typeof data?.text === 'string' ? data.text : null;
+            } catch {
+              return null;
+            }
+          };
+
+          try {
+            // Prefer direct OpenAI in dev for local testing; then server
+            let text: string | null = await transcribeViaOpenAI();
+            if (!text) text = await transcribeViaServer();
+            if (text) {
+              onSendMessage(text);
+            }
+          } finally {
+            setIsRecording(false);
+            setMediaRecorder(null);
+          }
+        };
+        mr.start();
+        setMediaRecorder(mr);
+        // keep chunks local
+        setIsRecording(true);
+      } catch {
+        // microphone permission or setup error
+      }
+    };
+
+    const stopRecording = () => {
+      if (!mediaRecorder) return;
+      if (mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        mediaRecorder.stream.getTracks().forEach((t) => t.stop());
+      }
+    };
+
     return (
       <div className="flex items-center gap-2 w-full">
         <div className="flex-1 relative">
@@ -54,6 +137,16 @@ export const AIInput = forwardRef<HTMLInputElement, AIInputProps>(
             </div>
           )}
         </div>
+        <button
+          onMouseDown={startRecording}
+          onMouseUp={stopRecording}
+          onMouseLeave={stopRecording}
+          disabled={isLoading}
+          className={`flex-shrink-0 px-3 py-2 rounded-lg transition-colors text-sm ${isRecording ? 'bg-red-500 text-white' : 'bg-theme-surface-hover text-theme-primary border border-theme hover:bg-theme-surface'}`}
+          title={isRecording ? 'Release to transcribe' : 'Hold to talk'}
+        >
+          {isRecording ? 'Recording…' : 'Hold to Talk'}
+        </button>
         <button
           onClick={handleSubmit}
           disabled={!value.trim() || isLoading}
