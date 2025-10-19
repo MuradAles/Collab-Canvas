@@ -11,6 +11,8 @@ import { CircleProperties } from './properties/CircleProperties';
 import { TextProperties } from './properties/TextProperties';
 import { LineProperties } from './properties/LineProperties';
 
+type BlendMode = 'source-over' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'color-dodge' | 'color-burn' | 'hard-light' | 'soft-light' | 'difference' | 'exclusion';
+
 interface PropertiesPanelProps {
   selectedShape: Shape | null;
   selectedCount: number;
@@ -43,12 +45,16 @@ function PropertiesPanelComponent({
   // Local state for high-frequency inputs (colors, sliders)
   const [localFillColor, setLocalFillColor] = useState('');
   const [localStrokeColor, setLocalStrokeColor] = useState('');
+  const [localOpacity, setLocalOpacity] = useState(1);
+  const [localBlendMode, setLocalBlendMode] = useState<BlendMode>('source-over');
 
-  // Refs for throttling updates and tracking latest colors
+  // Refs for throttling updates and tracking latest values
   const rafIdRef = useRef<number | null>(null);
   const pendingUpdateRef = useRef<Partial<Shape> | null>(null);
   const latestFillColorRef = useRef<string>('');
   const latestStrokeColorRef = useRef<string>('');
+  const latestOpacityRef = useRef<number>(1);
+  const latestBlendModeRef = useRef<BlendMode>('source-over');
   const resizeStartX = useRef<number>(0);
   const resizeStartWidth = useRef<number>(0);
 
@@ -61,9 +67,18 @@ function PropertiesPanelComponent({
     [onUpdate, isLockedByOther]
   );
 
-  // Sync visibility toggles and colors when shape changes
+  // Sync visibility toggles, colors, opacity, and blend mode when shape changes
   useEffect(() => {
     if (!selectedShape) return;
+
+    // Sync opacity and blend mode for all shapes
+    const opacity = selectedShape.opacity !== undefined ? selectedShape.opacity : 1;
+    setLocalOpacity(opacity);
+    latestOpacityRef.current = opacity;
+    
+    const blendMode = selectedShape.blendMode || 'source-over';
+    setLocalBlendMode(blendMode);
+    latestBlendModeRef.current = blendMode;
 
     if (selectedShape.type === 'rectangle' || selectedShape.type === 'circle') {
       setHasFill(selectedShape.fill !== 'transparent');
@@ -400,6 +415,85 @@ function PropertiesPanelComponent({
             </div>
           </div>
         )}
+
+        {/* Appearance (Opacity & Blend Mode) */}
+        <div className="transition-all duration-300 ease-in-out">
+          <div className="text-xs text-theme-secondary uppercase tracking-wide mb-2">Appearance</div>
+          
+          {/* Opacity Slider */}
+          <div className="mb-3">
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs text-theme-primary">Opacity</label>
+              <span className="text-xs text-theme-secondary">
+                {Math.round(localOpacity * 100)}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={Math.round(localOpacity * 100)}
+              onChange={(e) => {
+                const opacity = parseInt(e.target.value) / 100;
+                // Update local state immediately for smooth slider movement
+                setLocalOpacity(opacity);
+                latestOpacityRef.current = opacity;
+                // Direct local update for instant feedback (same as width/height)
+                safeUpdate({ opacity }, true);
+              }}
+              onMouseUp={() => {
+                const opacity = latestOpacityRef.current;
+                // Sync final value to Firebase
+                safeUpdate({ opacity }, false);
+              }}
+              disabled={isLockedByOther}
+              className="w-full disabled:cursor-not-allowed"
+              style={{
+                accentColor: 'var(--primary-color)'
+              }}
+            />
+          </div>
+
+          {/* Blend Mode Dropdown */}
+          <div>
+            <label className="text-xs text-theme-primary mb-1 block">Blend Mode</label>
+            <select
+              value={localBlendMode}
+              onChange={(e) => {
+                const blendMode = e.target.value as BlendMode;
+                // Update local state immediately
+                setLocalBlendMode(blendMode);
+                latestBlendModeRef.current = blendMode;
+                // Direct local update for instant preview (same as opacity)
+                safeUpdate({ blendMode }, true);
+              }}
+              onBlur={() => {
+                // Sync to Firebase when dropdown closes (same pattern as other inputs)
+                const blendMode = latestBlendModeRef.current;
+                safeUpdate({ blendMode }, false);
+              }}
+              disabled={isLockedByOther}
+              className="w-full px-2 py-1.5 text-sm bg-theme-surface text-theme-primary border border-theme rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-theme-surface-hover disabled:cursor-not-allowed transition-all duration-200 ease-in-out"
+            >
+              <option value="source-over">Normal</option>
+              <option value="multiply">Multiply</option>
+              <option value="screen">Screen</option>
+              <option value="overlay">Overlay</option>
+              <option value="darken">Darken</option>
+              <option value="lighten">Lighten</option>
+              <option value="color-dodge">Color Dodge</option>
+              <option value="color-burn">Color Burn</option>
+              <option value="hard-light">Hard Light</option>
+              <option value="soft-light">Soft Light</option>
+              <option value="difference">Difference</option>
+              <option value="exclusion">Exclusion</option>
+            </select>
+            {/* Debug info */}
+            <div className="text-xs text-theme-secondary mt-1">
+              Current: {localBlendMode}
+            </div>
+          </div>
+        </div>
 
         {/* Type-specific Properties */}
         {selectedShape.type === 'rectangle' && (

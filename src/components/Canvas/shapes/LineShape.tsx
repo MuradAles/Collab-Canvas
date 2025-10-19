@@ -3,7 +3,7 @@
  * Renders a line shape with draggable anchors
  */
 
-import { forwardRef, useEffect } from 'react';
+import { forwardRef, useEffect, useRef } from 'react';
 import { Group, Line, Rect } from 'react-konva';
 import type Konva from 'konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
@@ -43,6 +43,8 @@ export const LineShape = forwardRef<Konva.Group, LineShapeProps>(
     },
     ref
   ) => {
+    const lineRef = useRef<Konva.Line | null>(null);
+    
     // Match transformer anchor size (8x8 box matching Transformer anchorSize)
     // Apply inverse scale to make anchors scale-invariant (constant screen size)
     const baseAnchorSize = 8;
@@ -51,6 +53,19 @@ export const LineShape = forwardRef<Konva.Group, LineShapeProps>(
     
     // Also scale the stroke width to maintain consistent visual appearance
     const anchorStrokeWidth = 2 / stageScale;
+    
+    // Apply blend mode directly to Konva Line node (react-konva doesn't support it as prop)
+    useEffect(() => {
+      if (lineRef.current) {
+        const node = lineRef.current;
+        if (shape.blendMode) {
+          node.globalCompositeOperation(shape.blendMode);
+        } else {
+          node.globalCompositeOperation('source-over');
+        }
+        node.getLayer()?.batchDraw();
+      }
+    }, [shape.blendMode, shape.id]);
     
     // Ensure Group stays at (0, 0) - Konva drag will move it, but we reset it
     useEffect(() => {
@@ -87,11 +102,12 @@ export const LineShape = forwardRef<Konva.Group, LineShapeProps>(
       />
       {/* Visible line */}
       <Line
+        ref={lineRef}
         points={[shape.x1, shape.y1, shape.x2, shape.y2]}
         stroke={shape.stroke}
         strokeWidth={shape.strokeWidth}
         lineCap={shape.lineCap}
-        opacity={opacity}
+        opacity={shape.opacity !== undefined ? shape.opacity : opacity}
         listening={false}
         perfectDrawEnabled={false}
       />
