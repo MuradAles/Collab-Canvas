@@ -8,6 +8,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { usePresenceContext } from '../../contexts/PresenceContext';
 import { useCanvasContext } from '../../contexts/CanvasContext';
 import { SettingsPanel } from './SettingsPanel';
+import { Tutorial } from '../Canvas/Tutorial';
 import type { ExportFunctions } from '../Canvas/Canvas';
 
 interface NavbarProps {
@@ -273,6 +274,12 @@ export function Navbar({ onNavigateToUser, exportFunctions }: NavbarProps = {}) 
                 />
               </svg>
             </button>
+
+            {/* Keyboard Shortcuts Button */}
+            <div className="relative">
+              <Tutorial />
+            </div>
+
           {/* Other Online Users (exclude current user) */}
           {(() => {
             const otherUsers = onlineUsers.filter(user => user.uid !== currentUser.uid);

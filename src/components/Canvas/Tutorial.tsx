@@ -26,41 +26,22 @@ export function Tutorial() {
   ];
 
   return (
-    <div className="flex flex-col items-center">
+    <>
       {/* Modal */}
       {isOpen && (
         <>
           {/* Backdrop */}
           <div 
-            className="fixed inset-0"
-            style={{ zIndex: 9998 }}
+            className="fixed inset-0 z-30"
             onClick={() => setIsOpen(false)}
           />
           
-          {/* Compact Popup - positioned near button on right */}
+          {/* Dropdown positioned below navbar button */}
           <div 
-            className="fixed w-80 bg-theme-surface bg-opacity-95 rounded-lg shadow-lg border border-theme overflow-hidden backdrop-blur-sm"
+            className="absolute top-full right-0 mt-2 w-80 bg-theme-surface rounded-lg shadow-lg border border-theme overflow-hidden z-40"
             onClick={(e) => e.stopPropagation()}
-            style={{
-              right: '80px',
-              bottom: '16px',
-              zIndex: 9999,
-              animation: 'slideInFromRight 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards',
-              opacity: 0,
-            }}
           >
             <style>{`
-              @keyframes slideInFromRight {
-                from {
-                  opacity: 0;
-                  transform: translateX(20px) scale(0.95);
-                }
-                to {
-                  opacity: 1;
-                  transform: translateX(0) scale(1);
-                }
-              }
-              
               /* Custom Scrollbar */
               .custom-scrollbar::-webkit-scrollbar {
                 width: 6px;
@@ -104,13 +85,14 @@ export function Tutorial() {
         </>
       )}
 
-      {/* Tutorial Button */}
+      {/* Tutorial Button - Navbar style */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative group w-12 h-12 flex items-center justify-center rounded-full bg-theme-surface hover:bg-theme-surface-hover border-2 border-theme shadow-lg transition-all hover:shadow-xl"
+        className="p-2 hover:bg-theme-surface-hover rounded-lg transition-colors group"
+        title="Keyboard Shortcuts"
       >
         <svg
-          className="w-5 h-5 text-theme-primary"
+          className="w-5 h-5 text-theme-secondary group-hover:text-theme-primary transition-colors"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -122,14 +104,8 @@ export function Tutorial() {
             d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
           />
         </svg>
-        {/* Hover Tooltip */}
-        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-50">
-          <div className="bg-gray-900 dark:bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap backdrop-blur-sm">
-            Keyboard Shortcuts
-          </div>
-        </div>
       </button>
-    </div>
+    </>
   );
 }
 
